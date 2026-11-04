@@ -64,7 +64,7 @@ public enum ShaderToggle {
 
     /** True while a choice waits for the Apply button (hot apply only). */
     public boolean pending() {
-        return this.chosen != null && this.chosen != this.running;
+        return !this.forced && this.chosen != null && this.chosen != this.running;
     }
 
     public boolean restartRequired() {
@@ -72,6 +72,9 @@ public enum ShaderToggle {
     }
 
     public void choose(final boolean on) {
+        if (this.forced) {
+            return;
+        }
         if (this.live) {
             if (on != this.running) {
                 this.running = on;

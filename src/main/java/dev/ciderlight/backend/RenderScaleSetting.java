@@ -60,7 +60,7 @@ public enum RenderScaleSetting {
     }
 
     public static void choose(final RenderScaleSetting setting) {
-        if (setting == running) {
+        if (forced() || setting == running) {
             return;
         }
         running = setting;

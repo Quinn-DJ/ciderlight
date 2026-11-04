@@ -56,9 +56,14 @@ public enum ShaderSetting {
         return chosen != null ? chosen : running;
     }
 
+    /** Whether -Dciderlight.shaders fixes it, so a change on the settings page changes nothing. */
+    public static boolean forced() {
+        return System.getProperty("ciderlight.shaders") != null;
+    }
+
     /** True while a choice waits for the Apply button (hot apply only). */
     public static boolean pending() {
-        return chosen != null && chosen != running;
+        return !forced() && chosen != null && chosen != running;
     }
 
     public static boolean restartRequired() {
@@ -66,7 +71,7 @@ public enum ShaderSetting {
     }
 
     public static void choose(final ShaderSetting setting) {
-        if (setting == current()) {
+        if (forced() || setting == current()) {
             return;
         }
         chosen = setting;

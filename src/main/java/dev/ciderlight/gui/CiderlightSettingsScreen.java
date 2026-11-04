@@ -51,6 +51,7 @@ public class CiderlightSettingsScreen extends OptionsSubScreen {
     private final List<OptionInstance<?>> effects = new ArrayList<>();
     /** The effects set by a -Dciderlight.* override: always greyed out. */
     private final Set<OptionInstance<?>> forced = new HashSet<>();
+    private @Nullable OptionInstance<ShaderSetting> shadersOption;
     private @Nullable StringWidget status;
     private @Nullable Button applyButton;
     private @Nullable Button doneButton;
@@ -79,6 +80,7 @@ public class CiderlightSettingsScreen extends OptionsSubScreen {
                 this.refreshStatus();
             }
         );
+        this.shadersOption = shaders;
         this.list.addBig(shaders);
         this.effects.clear();
         this.forced.clear();
@@ -177,6 +179,12 @@ public class CiderlightSettingsScreen extends OptionsSubScreen {
     private void updateEffects() {
         boolean on = ShaderSetting.current() != ShaderSetting.OFF;
         boolean idle = !ShaderReload.applying();
+        if (this.shadersOption != null) {
+            AbstractWidget widget = this.list.findOption(this.shadersOption);
+            if (widget != null) {
+                widget.active = !ShaderSetting.forced() && idle;
+            }
+        }
         for (OptionInstance<?> option : this.effects) {
             AbstractWidget widget = this.list.findOption(option);
             if (widget != null) {
@@ -226,6 +234,9 @@ public class CiderlightSettingsScreen extends OptionsSubScreen {
     }
 
     private @Nullable Component shadersNote(final ShaderSetting value) {
+        if (ShaderSetting.forced()) {
+            return forcedNote("shaders");
+        }
         if (ShaderReload.HOT_ENABLED) {
             return value != ShaderSetting.running() ? APPLY : null;
         }
