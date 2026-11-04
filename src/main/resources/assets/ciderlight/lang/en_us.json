@@ -1,4 +1,5 @@
 {
   "key.ciderlight.toggle_shaders": "Toggle Shaders",
-  "key.category.ciderlight.shaders": "Ciderlight"
+  "key.ciderlight.open_settings": "Ciderlight Settings",
+  "key.category.ciderlight.controls": "Ciderlight"
 }

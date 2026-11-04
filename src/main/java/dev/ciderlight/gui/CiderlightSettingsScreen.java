@@ -28,7 +28,7 @@ import org.jspecify.annotations.Nullable;
  * Ciderlight's settings, opened from the Ciderlight button in Video Settings (VideoSettingsScreenMixin): the shaders
  * on/off switch (ShaderSetting), their quality (ShaderQuality), the effects that can be turned off one by one
  * (ShaderToggle) and the world's render scale. The switch and the quality are separate, so turning the shaders off
- * keeps the Low/High choice (and the toggle keybind, ShaderKeybind, relies on that). Everything here is saved to
+ * keeps the Low/High choice (and the toggle keybind, CiderlightKeybinds, relies on that). Everything here is saved to
  * config/ciderlight.properties.
  *
  * <p>Shadows, Ambient Occlusion and the render scale apply at once. With hot apply (ShaderReload) the shader switch,
