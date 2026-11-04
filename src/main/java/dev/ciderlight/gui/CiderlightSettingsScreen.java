@@ -2,6 +2,7 @@ package dev.ciderlight.gui;
 
 import com.mojang.serialization.Codec;
 import dev.ciderlight.backend.RenderScaleSetting;
+import dev.ciderlight.backend.ShaderQuality;
 import dev.ciderlight.backend.ShaderReload;
 import dev.ciderlight.backend.ShaderSetting;
 import dev.ciderlight.backend.ShaderToggle;
@@ -24,25 +25,31 @@ import net.minecraft.network.chat.Component;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Ciderlight's settings, opened from the Ciderlight button in Video Settings (VideoSettingsScreenMixin): the Shaders
- * quality, the effects that can be turned off one by one (ShaderToggle) and the world's render scale. Everything here
- * is saved to config/ciderlight.properties.
+ * Ciderlight's settings, opened from the Ciderlight button in Video Settings (VideoSettingsScreenMixin): the shaders
+ * on/off switch (ShaderSetting), their quality (ShaderQuality), the effects that can be turned off one by one
+ * (ShaderToggle) and the world's render scale. The switch and the quality are separate, so turning the shaders off
+ * keeps the Low/High choice (and the toggle keybind, ShaderKeybind, relies on that). Everything here is saved to
+ * config/ciderlight.properties.
  *
- * <p>Shadows, Ambient Occlusion and the render scale apply at once. With hot apply (ShaderReload) the Shaders choice
- * and the compiled effects (Waving Plants, Water Reflections, Water Waves) are staged until the Apply button commits
- * them and reloads the pipelines; a line above the options says what is staged and the button shows the progress
- * while the world is hidden. Done (or Esc) applies staged changes first instead of dropping them. Without hot apply
- * (-Dciderlight.hotReload=false) those options keep the old restart-to-apply behaviour, their tooltips say so and the
- * Apply button is not there. An option set by its -Dciderlight.* override is greyed out, as the override wins.
+ * <p>Shadows, Ambient Occlusion and the render scale apply at once. With hot apply (ShaderReload) the shader switch,
+ * the quality and the compiled effects (Waving Plants, Water Reflections, Water Waves) are staged until the Apply
+ * button commits them and reloads the pipelines; a line above the options says what is staged and the button shows
+ * the progress while the world is hidden. Done (or Esc) applies staged changes first instead of dropping them.
+ * Without hot apply (-Dciderlight.hotReload=false) those options keep the old restart-to-apply behaviour, their
+ * tooltips say so and the Apply button is not there. An option set by its -Dciderlight.* override is greyed out, as
+ * the override wins.
  */
 public class CiderlightSettingsScreen extends OptionsSubScreen {
     private static final Component TITLE = Component.literal("Ciderlight Settings");
     private static final Component RESTART = Component.literal("Applies after restarting the game").withStyle(ChatFormatting.RED);
     private static final Component APPLY = Component.literal("Click Apply to use this setting").withStyle(ChatFormatting.YELLOW);
     private static final Component SHADERS_TOOLTIP = Component.literal(
-        "Ciderlight's shadows, light shafts, water, sky and waving plants. Low is lighter on the GPU (smaller shadow maps, "
-            + "coarser fog, the world at two thirds of the window's resolution) and is the default on A-series chips and the plain M1 to M4. "
-            + "Off keeps the Metal renderer with Minecraft's own look.");
+        "Ciderlight's shadows, light shafts, water, sky and waving plants. Off keeps the Metal renderer with Minecraft's "
+            + "own look.");
+    private static final Component QUALITY_TOOLTIP = Component.literal(
+        "How much the shaders cost on the GPU. Low has smaller shadow maps, coarser fog, lighter water reflections and draws "
+            + "the world at two thirds of the window's resolution; it is what A-series chips and the plain M1 to M4 start on. "
+            + "High is what everything else starts on. The quality is kept while the shaders are off.");
     private static final Component RENDER_SCALE_TOOLTIP = Component.literal(
         "The world's resolution as a share of the window's; the HUD and menus stay sharp. Lower is faster. "
             + "Auto: two thirds on Low, full on High. Applies immediately.");
@@ -52,6 +59,7 @@ public class CiderlightSettingsScreen extends OptionsSubScreen {
     /** The effects set by a -Dciderlight.* override: always greyed out. */
     private final Set<OptionInstance<?>> forced = new HashSet<>();
     private @Nullable OptionInstance<ShaderSetting> shadersOption;
+    private @Nullable OptionInstance<ShaderQuality> qualityOption;
     private @Nullable StringWidget status;
     private @Nullable Button applyButton;
     private @Nullable Button doneButton;
@@ -82,6 +90,21 @@ public class CiderlightSettingsScreen extends OptionsSubScreen {
         );
         this.shadersOption = shaders;
         this.list.addBig(shaders);
+
+        OptionInstance<ShaderQuality> quality = new OptionInstance<>(
+            "Shaders Quality",
+            value -> tooltip(QUALITY_TOOLTIP, qualityNote(value)),
+            (caption, value) -> Component.literal(value.label),
+            new OptionInstance.Enum<>(List.of(ShaderQuality.values()), Codec.STRING.xmap(ShaderQuality::valueOf, ShaderQuality::name)),
+            ShaderQuality.current(),
+            value -> {
+                this.lastApplyFailed = false;
+                ShaderQuality.choose(value);
+                this.refreshStatus();
+            }
+        );
+        this.qualityOption = quality;
+        this.list.addBig(quality);
         this.effects.clear();
         this.forced.clear();
         for (ShaderToggle toggle : ShaderToggle.values()) {
@@ -177,12 +200,18 @@ public class CiderlightSettingsScreen extends OptionsSubScreen {
     }
 
     private void updateEffects() {
-        boolean on = ShaderSetting.current() != ShaderSetting.OFF;
+        boolean on = ShaderSetting.current() == ShaderSetting.ON;
         boolean idle = !ShaderReload.applying();
         if (this.shadersOption != null) {
             AbstractWidget widget = this.list.findOption(this.shadersOption);
             if (widget != null) {
                 widget.active = !ShaderSetting.forced() && idle;
+            }
+        }
+        if (this.qualityOption != null) {
+            AbstractWidget widget = this.list.findOption(this.qualityOption);
+            if (widget != null) {
+                widget.active = on && idle && !ShaderQuality.forced();
             }
         }
         for (OptionInstance<?> option : this.effects) {
@@ -241,6 +270,16 @@ public class CiderlightSettingsScreen extends OptionsSubScreen {
             return value != ShaderSetting.running() ? APPLY : null;
         }
         return value != ShaderSetting.running() ? RESTART : null;
+    }
+
+    private @Nullable Component qualityNote(final ShaderQuality value) {
+        if (ShaderQuality.forced()) {
+            return forcedNote("quality");
+        }
+        if (ShaderReload.HOT_ENABLED) {
+            return value != ShaderQuality.running() ? APPLY : null;
+        }
+        return value != ShaderQuality.running() ? RESTART : null;
     }
 
     private @Nullable Component toggleNote(final ShaderToggle toggle, final boolean value) {

@@ -9,8 +9,8 @@ import org.slf4j.Logger;
  * How much the shader pipeline spends on a frame. LOW is for phone-class GPUs (the A-series chip in the MacBook Neo),
  * which have about a third of an M-series GPU, and for the plain M1 to M4, with less GPU than an M1 Pro and mostly in
  * fanless MacBook Airs that slow down as they heat up: smaller shadow maps, a coarser fog and ambient-occlusion buffer, and shorter fog and reflection marches, and the world drawn at two thirds
- * of the window's resolution (RenderScale). The Shaders setting in Video Settings (ShaderSetting) overrides the choice
- * made from the GPU's name, and -Dciderlight.quality=low|high overrides both.
+ * of the window's resolution (RenderScale). The Shaders Quality setting (ShaderQuality) overrides the choice made from
+ * the GPU's name, and -Dciderlight.quality=low|high overrides both.
  */
 enum Quality {
     //   shadow, far, far beyond FAR_SHADOW_FINE_RADIUS, fog rows, AO rows, render scale
@@ -68,8 +68,8 @@ enum Quality {
         Quality quality = switch (forced) {
             case "low" -> LOW;
             case "high" -> HIGH;
-            default -> ShaderSetting.saved() == ShaderSetting.LOW ? LOW
-                : ShaderSetting.saved() == ShaderSetting.HIGH ? HIGH
+            default -> ShaderQuality.saved() == ShaderQuality.LOW ? LOW
+                : ShaderQuality.saved() == ShaderQuality.HIGH ? HIGH
                 : lowEnd(deviceName) ? LOW : HIGH;
         };
         LOGGER.info("Ciderlight: {} quality for {}, world at {}% resolution{}", quality.name().toLowerCase(Locale.ROOT), deviceName,

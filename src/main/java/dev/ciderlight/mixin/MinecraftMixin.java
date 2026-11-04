@@ -1,6 +1,7 @@
 package dev.ciderlight.mixin;
 
 import dev.ciderlight.Benchmark;
+import dev.ciderlight.ShaderKeybind;
 import dev.ciderlight.backend.FramePacer;
 import dev.ciderlight.backend.HitchTrace;
 import dev.ciderlight.backend.ShaderReload;
@@ -23,6 +24,7 @@ public class MinecraftMixin {
         }
         FramePacer.worldTick(minecraft.level != null, minecraft.gui.screen() == null);
         ShaderReload.tick();
+        ShaderKeybind.tick(minecraft);
         if (HitchTrace.ENABLED) {
             HitchTrace.tickStart(minecraft.level != null, minecraft.gui.screen() == null);
             if (!Benchmark.autoMoves()) {
