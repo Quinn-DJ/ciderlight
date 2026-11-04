@@ -45,17 +45,22 @@ Visual references: Complementary Shaders and Bliss (Chocapic13 edit). All Metal 
 
 Open **Options > Video Settings > Ciderlight...** (under the graphics preset):
 
-- **Shaders**: Off (Metal renderer, vanilla look), Low or High. A-series GPUs and the plain M1, M2, M3 and M4 default to
-  Low (smaller shadow maps, fewer samples, lighter water reflections, world drawn at about two thirds resolution);
-  everything else defaults to High.
+- **Shaders**: On (Ciderlight's built-in shaders) or Off (the Metal renderer with Minecraft's own look).
+- **Shaders Quality**: Low or High. Low has smaller shadow maps, fewer samples, lighter water reflections and the world
+  drawn at about two thirds resolution; A-series GPUs and the plain M1, M2, M3 and M4 start on Low, everything else on
+  High. Turning the shaders off keeps this choice.
 - **Shadows**, **Waving Plants**, **Water Reflections**, **Water Waves**, **Ambient Occlusion**: each on by default. Shadows off also
   skips the shadow maps and light shafts, which is the biggest saving.
 - **Render Scale**: the world's resolution, Auto (the quality's own) or 50 to 100%.
 
-**Shadows**, **Ambient Occlusion** and the **Render Scale** apply at once. The **Shaders** choice and the three compiled
-effects (**Waving Plants**, **Water Reflections**, **Water Waves**) are staged on the page and applied by its **Apply**
-button, which rebuilds the shader pipelines in place: the world pauses for a moment while that happens and the page
-shows the progress. Nothing here needs a restart. All of it is saved in `config/ciderlight.properties`.
+**Shadows**, **Ambient Occlusion** and the **Render Scale** apply at once. The **Shaders** switch, **Shaders Quality**
+and the three compiled effects (**Waving Plants**, **Water Reflections**, **Water Waves**) are staged on the page and
+applied by its **Apply** button, which rebuilds the shader pipelines in place: the world pauses for a moment while that
+happens and the page shows the progress. Nothing here needs a restart. All of it is saved in
+`config/ciderlight.properties`.
+
+**Toggle key**: under **Controls > Key Binds > Ciderlight**, **Toggle Shaders** (default **F10**) switches the shaders
+on and off at the quality kept on this page.
 
 JVM `-D` overrides: `ciderlight.quality=low|high`, `ciderlight.shaders=false`, `ciderlight.renderScale=<0.25–1>`,
 `ciderlight.hotReload=false` (apply those settings only at the next start, the old behaviour),

@@ -75,6 +75,7 @@ public class MetalDevice implements GpuDeviceBackend {
             ShaderToggle.WATER_WAVES.enabled()
         );
         ShaderSetting.started(settings);
+        ShaderQuality.started(quality == Quality.LOW);
         MetalShaders.commitSettings(settings);
         this.shaders = new MetalShaders(this, quality, settings);
         current = this;

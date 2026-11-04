@@ -4,16 +4,17 @@ import java.util.Locale;
 import org.jspecify.annotations.Nullable;
 
 /**
- * The player's choice of shaders on the Ciderlight settings page (CiderlightSettingsScreen): off, low or high quality.
- * Without a saved choice, Quality picks low for A-series GPUs and the plain M1 to M4, and high otherwise. The choice
- * is saved to config/ciderlight.properties (CiderlightConfig). With hot apply (ShaderReload) choosing it only stages
- * a pending value, which the settings page's Apply button commits once the pipelines were rebuilt; otherwise it
- * takes effect at the next start. -Dciderlight.shaders=false and -Dciderlight.quality=low|high still override it.
+ * Whether Ciderlight's shaders run: the on/off switch on the Ciderlight settings page (CiderlightSettingsScreen). The
+ * quality is a separate setting (ShaderQuality), so turning the shaders off does not lose the Low/High choice: the
+ * keybind (ShaderKeybind) turns this switch on and off and keeps the quality. Saved to
+ * config/ciderlight.properties as "shaders" = on|off; older files stored off/low/high there and are read as on (the
+ * quality comes from ShaderQuality, which reads the old low/high value as a fallback). With hot apply (ShaderReload)
+ * choosing it only stages a pending value, which the settings page's Apply button commits once the pipelines were
+ * rebuilt; otherwise it takes effect at the next start.
  */
 public enum ShaderSetting {
     OFF("Off"),
-    LOW("Low"),
-    HIGH("High");
+    ON("On");
 
     private static final @Nullable ShaderSetting SAVED = load();
     /** What this session runs with: what the game started with, then whatever Apply committed. */
@@ -25,11 +26,6 @@ public enum ShaderSetting {
 
     ShaderSetting(final String label) {
         this.label = label;
-    }
-
-    /** The choice saved when the game started, or null to let the GPU decide. */
-    static @Nullable ShaderSetting saved() {
-        return SAVED;
     }
 
     /** Whether -Dciderlight.shaders enables the shaders whatever config says. */
@@ -76,7 +72,7 @@ public enum ShaderSetting {
         }
         chosen = setting;
         if (!ShaderReload.HOT_ENABLED) {
-            CiderlightConfig.set("shaders", setting.name().toLowerCase(Locale.ROOT));
+            CiderlightConfig.set("shaders", setting == OFF ? "off" : "on");
         }
     }
 
@@ -86,35 +82,32 @@ public enum ShaderSetting {
         chosen = null;
         if (staged != null) {
             running = staged;
-            CiderlightConfig.set("shaders", staged.name().toLowerCase(Locale.ROOT));
+            CiderlightConfig.set("shaders", staged == OFF ? "off" : "on");
         }
     }
 
     /** Called by MetalDevice with what the game actually started with. */
     static void started(final ShaderSettings settings) {
-        running = settings.shaders() ? (settings.lowQuality() ? LOW : HIGH) : OFF;
+        running = settings.shaders() ? ON : OFF;
         chosen = null;
     }
 
     /** The value the game runs with before its device exists: enough for the settings page (which is hidden then). */
     private static ShaderSetting initialRunning() {
-        if (!initialEnabled()) {
-            return OFF;
-        }
-        return SAVED == LOW ? LOW : HIGH;
+        return initialEnabled() ? ON : OFF;
     }
 
+    /** Reads the new on/off value, or the old off/low/high one; null lets the default (on) stand. */
     private static @Nullable ShaderSetting load() {
         String saved = CiderlightConfig.saved("shaders");
         if (saved == null) {
             return null;
         }
-        String value = saved.trim().toUpperCase(Locale.ROOT);
-        for (ShaderSetting setting : values()) {
-            if (setting.name().equals(value)) {
-                return setting;
-            }
-        }
-        return null;
+        String value = saved.trim().toLowerCase(Locale.ROOT);
+        return switch (value) {
+            case "off", "false" -> OFF;
+            case "on", "true", "low", "high" -> ON;
+            default -> null;
+        };
     }
 }

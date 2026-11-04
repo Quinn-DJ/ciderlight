@@ -70,9 +70,9 @@ public final class ShaderReload {
         return applying && Util.getMillis() - startedAt > SLOW_MS;
     }
 
-    /** True while ShaderSetting or a compiled effect has a staged value for the Apply button. */
+    /** True while a shader setting or a compiled effect has a staged value for the Apply button. */
     public static boolean pendingChanges() {
-        return ShaderSetting.pending() || ShaderToggle.anyPending();
+        return ShaderSetting.pending() || ShaderQuality.pending() || ShaderToggle.anyPending();
     }
 
     /** Called from MetalDevice.compilePipeline for every pipeline the reload rebuilds. */
@@ -98,7 +98,7 @@ public final class ShaderReload {
         }
         Quality quality = resolveQuality(device.shaders().quality());
         ShaderSettings target = new ShaderSettings(
-            ShaderSetting.current() != ShaderSetting.OFF,
+            ShaderSetting.current() == ShaderSetting.ON,
             quality == Quality.LOW,
             ShaderToggle.WAVING.current(),
             ShaderToggle.WATER_REFLECTIONS.current(),
@@ -109,6 +109,7 @@ public final class ShaderReload {
             // Nothing reaches a compiled shader source (a choice while the shaders are off, or one made moot by a -D
             // override): commit it and save the config without rebuilding anything.
             ShaderSetting.commit();
+            ShaderQuality.commit();
             ShaderToggle.commitAll();
             success.run();
             return;
@@ -165,14 +166,10 @@ public final class ShaderReload {
         if (forced.equals("high")) {
             return Quality.HIGH;
         }
-        ShaderSetting shown = ShaderSetting.current();
-        if (shown == ShaderSetting.LOW) {
-            return Quality.LOW;
+        if (ShaderSetting.current() == ShaderSetting.OFF) {
+            return current; // switching the shaders off: the quality only matters to Auto render scale while on
         }
-        if (shown == ShaderSetting.HIGH) {
-            return Quality.HIGH;
-        }
-        return current;
+        return ShaderQuality.current() == ShaderQuality.LOW ? Quality.LOW : Quality.HIGH;
     }
 
     /**
@@ -216,6 +213,7 @@ public final class ShaderReload {
         // Match the side effects a full resource reload has: failed post effects are reset.
         game().gameRenderer.onResourceManagerReload(game().getResourceManager());
         ShaderSetting.commit();
+        ShaderQuality.commit();
         ShaderToggle.commitAll();
         if (previous != null) {
             device.encoder().queueForDestroy(previous);
@@ -256,7 +254,7 @@ public final class ShaderReload {
     }
 
     private static String describe(final ShaderSettings settings) {
-        return (settings.shaders() ? (settings.lowQuality() ? "low" : "high") : "off")
-            + " waving=" + settings.waving() + " reflections=" + settings.waterReflections() + " waves=" + settings.waterWaves();
+        return (settings.shaders() ? "on" : "off") + ", " + (settings.lowQuality() ? "low" : "high")
+            + ", waving=" + settings.waving() + ", reflections=" + settings.waterReflections() + ", waves=" + settings.waterWaves();
     }
 }
