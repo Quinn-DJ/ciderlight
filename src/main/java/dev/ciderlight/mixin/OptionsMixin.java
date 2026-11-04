@@ -1,6 +1,6 @@
 package dev.ciderlight.mixin;
 
-import dev.ciderlight.ShaderKeybind;
+import dev.ciderlight.CiderlightKeybinds;
 import dev.ciderlight.backend.ShaderQuality;
 import dev.ciderlight.backend.ShaderReload;
 import dev.ciderlight.backend.ShaderSetting;
@@ -18,10 +18,10 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 /**
- * Adds Ciderlight's "Toggle Shaders" key to the game's key mappings before Options reads the saved ones, so it appears
- * under Controls > Key Binds > Ciderlight, can be rebound and is saved in options.txt like the vanilla keys. Also makes
- * Video Settings show its "restart required" notice when a Ciderlight setting differs from what is running, unless hot
- * apply is on (then the settings page applies them itself).
+ * Adds Ciderlight's keys (Toggle Shaders, Ciderlight Settings) to the game's key mappings before Options reads the
+ * saved ones, so they appear under Controls > Key Binds > Ciderlight, can be rebound and are saved in options.txt like
+ * the vanilla keys. Also makes Video Settings show its "restart required" notice when a Ciderlight setting differs
+ * from what is running, unless hot apply is on (then the settings page applies them itself).
  */
 @Mixin(Options.class)
 public class OptionsMixin {
@@ -31,10 +31,10 @@ public class OptionsMixin {
     private KeyMapping[] keyMappings;
 
     @Inject(method = "<init>", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/Options;load()V"))
-    private void ciderlight$addToggleKey(final CallbackInfo ci) {
-        KeyMapping toggle = ShaderKeybind.toggle();
-        KeyMapping[] mappings = Arrays.copyOf(this.keyMappings, this.keyMappings.length + 1);
-        mappings[mappings.length - 1] = toggle;
+    private void ciderlight$addKeys(final CallbackInfo ci) {
+        KeyMapping[] added = CiderlightKeybinds.mappings();
+        KeyMapping[] mappings = Arrays.copyOf(this.keyMappings, this.keyMappings.length + added.length);
+        System.arraycopy(added, 0, mappings, this.keyMappings.length, added.length);
         this.keyMappings = mappings;
     }
 

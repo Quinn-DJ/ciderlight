@@ -1,4 +1,5 @@
 {
   "key.ciderlight.toggle_shaders": "切换光影",
-  "key.category.ciderlight.shaders": "Ciderlight"
+  "key.ciderlight.open_settings": "Ciderlight 设置",
+  "key.category.ciderlight.controls": "Ciderlight"
 }

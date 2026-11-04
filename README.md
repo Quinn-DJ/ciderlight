@@ -59,8 +59,8 @@ applied by its **Apply** button, which rebuilds the shader pipelines in place: t
 happens and the page shows the progress. Nothing here needs a restart. All of it is saved in
 `config/ciderlight.properties`.
 
-**Toggle key**: under **Controls > Key Binds > Ciderlight**, **Toggle Shaders** (default **F10**) switches the shaders
-on and off at the quality kept on this page.
+**Keys**: under **Controls > Key Binds > Ciderlight**, **Toggle Shaders** (default **K**) switches the shaders on and
+off at the quality kept on this page, and **Ciderlight Settings** (default **O**) opens this page from the game.
 
 JVM `-D` overrides: `ciderlight.quality=low|high`, `ciderlight.shaders=false`, `ciderlight.renderScale=<0.25–1>`,
 `ciderlight.hotReload=false` (apply those settings only at the next start, the old behaviour),

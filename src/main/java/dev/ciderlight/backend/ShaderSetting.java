@@ -6,7 +6,7 @@ import org.jspecify.annotations.Nullable;
 /**
  * Whether Ciderlight's shaders run: the on/off switch on the Ciderlight settings page (CiderlightSettingsScreen). The
  * quality is a separate setting (ShaderQuality), so turning the shaders off does not lose the Low/High choice: the
- * keybind (ShaderKeybind) turns this switch on and off and keeps the quality. Saved to
+ * keybind (CiderlightKeybinds) turns this switch on and off and keeps the quality. Saved to
  * config/ciderlight.properties as "shaders" = on|off; older files stored off/low/high there and are read as on (the
  * quality comes from ShaderQuality, which reads the old low/high value as a fallback). With hot apply (ShaderReload)
  * choosing it only stages a pending value, which the settings page's Apply button commits once the pipelines were
