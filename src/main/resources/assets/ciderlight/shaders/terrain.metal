@@ -69,6 +69,21 @@ static int sprite_kind(const device uchar *spriteMap, float2 uv) {
     return sprite_map_cell(spriteMap, uv) >> 4;
 }
 
+// OptiFine emissive textures: a pack's "_e" sprite is stitched into the same block atlas, and MetalShaders.
+// uploadEmissiveMap leaves the UV offset to it for every atlas cell (xy: offset, z: 1 when the cell has one).
+static float4 emissive_cell(const device uchar *emissiveMap, float2 uv) {
+    float2 scale = *(const device float2 *)emissiveMap;
+    uint2 grid = *(const device uint2 *)(emissiveMap + 8);
+    if (grid.x == 0u || grid.y == 0u) {
+        return float4(0.0);
+    }
+    int2 cell = int2(floor(uv * scale));
+    if (cell.x < 0 || cell.y < 0 || uint(cell.x) >= grid.x || uint(cell.y) >= grid.y) {
+        return float4(0.0);
+    }
+    return ((const device float4 *)(emissiveMap + 16))[uint(cell.y) * grid.x + uint(cell.x)];
+}
+
 #ifdef ALPHA_CUTOUT
 // How much of this texel is flame: all of a fire sprite, or the bright core of a torch, lantern or lit campfire log
 // (their sticks, frames and bark stay below the threshold).
@@ -196,6 +211,7 @@ fragment float4 terrain_fragment(VertexOut in [[stage_in]],
                                  constant Fog &fog [[buffer(IDX_FOG)]],
                                  constant FrameData &frame [[buffer(IDX_FRAME)]],
                                  const device uchar *spriteMap [[buffer(IDX_FOLIAGE)]],
+                                 const device uchar *emissiveMap [[buffer(16)]],
                                  texture2d<float> atlas [[texture(IDX_ATLAS)]],
                                  sampler atlasSampler [[sampler(IDX_ATLAS)]],
                                  texture2d<float> lightTex [[texture(IDX_LIGHTMAP)]],
@@ -563,6 +579,18 @@ fragment float4 terrain_fragment(VertexOut in [[stage_in]],
         }
     }
 #endif
+
+    // Resource-pack emissive textures (OptiFine convention): draw the pack's _e texels at full brightness, so glowing
+    // ore specks stay lit in the dark instead of taking the shadowed terrain colour. Sampled on texel centres at mip 0:
+    // the block atlas is mipmapped, and the glow should be as crisp as the texture it lights. Plain terrain pays only
+    // for the cell lookup (the branch is uniform across an atlas cell).
+    float4 emissiveCell = emissive_cell(emissiveMap, in.uv0);
+    if (emissiveCell.z > 0.0) {
+        float2 emissivePixel = 1.0 / float2(terrain.TextureSize);
+        float2 emissiveUv = in.uv0 + emissiveCell.xy;
+        float4 emissive = atlas.sample(atlasSampler, (floor(emissiveUv / emissivePixel) + 0.5) * emissivePixel, level(0.0));
+        color.rgb = mix(color.rgb, emissive.rgb, emissive.a);
+    }
 
     float f = max(fog_value(in.sphericalDistance, fog.FogEnvironmentalStart, fog.FogEnvironmentalEnd),
                   fog_value(in.cylindricalDistance, fog.FogRenderDistanceStart, fog.FogRenderDistanceEnd));

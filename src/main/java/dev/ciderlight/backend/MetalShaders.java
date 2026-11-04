@@ -8,8 +8,10 @@ import com.mojang.renderpearl.api.pipeline.BindGroupLayout;
 import com.mojang.renderpearl.api.pipeline.BlendFactor;
 import com.mojang.renderpearl.api.pipeline.BlendOp;
 import com.mojang.renderpearl.api.pipeline.CompareOp;
+import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
@@ -138,6 +140,8 @@ public final class MetalShaders implements Destroyable {
     private static final int TRANSLUCENT_SHADOW_HISTORY_INDEX = 15;
     /** Vertex-stage buffer holding the waving-foliage map (see foliage.metal). */
     private static final int FOLIAGE_INDEX = 13;
+    /** OptiFine emissive overlay: per-atlas-cell UV offsets and whether the cell has a _e sprite (terrain.metal). */
+    private static final int EMISSIVE_INDEX = 16;
     private static final int AO_INDEX = 9;
     private static final int CLOUD_SHADOW_INDEX = 8;
     private static final int FRAME_CONSTANTS_INDEX = 7;
@@ -416,6 +420,10 @@ public final class MetalShaders implements Destroyable {
     private int @Nullable [] uniformIndices;
     /** Grid over the block atlas marking which sprites wave and how; rebuilt when the block models are reloaded. */
     private long foliageBuffer;
+    /** Per-atlas-cell OptiFine emissive offsets; rebuilt with the sprite map when the block models are reloaded. */
+    private long emissiveBuffer;
+    private byte @Nullable [] emissiveBytes;
+    private final Map<String, String> emissiveSuffixes = new HashMap<>();
     private byte @Nullable [] foliageBytes;
     private @Nullable Object foliageModels;
     private String vertexLayout = "";
@@ -1086,6 +1094,7 @@ public final class MetalShaders implements Destroyable {
         MetalNative.passSetBytes(enc, FRAME_INDEX, this.sampleFrame, FRAME_BYTES, BOTH);
         // The sprite map: the vertex stage reads which quads wave, the fragment stage each sprite's material.
         MetalNative.passSetBuffer(enc, FOLIAGE_INDEX, this.foliageBuffer(), 0L, BOTH);
+        MetalNative.passSetBuffer(enc, EMISSIVE_INDEX, this.emissiveBuffer(), 0L, MetalConst.STAGE_FRAGMENT);
         MetalNative.passSetTexture(enc, CLOUD_SHADOW_INDEX, this.cloudMapTexture(), 0L, MetalConst.STAGE_FRAGMENT);
         MetalNative.passSetTexture(enc, FRAME_CONSTANTS_INDEX, this.frameConstantsTexture, 0L, MetalConst.STAGE_FRAGMENT);
         MetalNative.passSetTexture(enc, LIGHTNING_SHADOW_INDEX, this.lightningShadowTexture(), 0L, MetalConst.STAGE_FRAGMENT);
@@ -1508,8 +1517,11 @@ public final class MetalShaders implements Destroyable {
                     sprites.merge(sprite, bits, (a, b) -> (byte)((a & 15) | b));
                 }
             }
+            Set<TextureAtlasSprite> modelSprites = new HashSet<>(shaded);
+            modelSprites.addAll(overridden);
             this.foliageModels = models;
             this.uploadSpriteMap(sprites);
+            this.uploadEmissiveMap(modelSprites);
         } catch (RuntimeException e) {
             LOGGER.warn("Ciderlight shaders: could not build the sprite map", e);
             this.foliageModels = null;
@@ -1622,6 +1634,152 @@ public final class MetalShaders implements Destroyable {
         }
         this.foliageBuffer = buffer;
         this.foliageBytes = bytes;
+    }
+
+    /**
+     * Builds the OptiFine emissive overlay: Minecraft 26.3 stitches every texture under textures/block into the block
+     * atlas, so an emissive sprite ("_e" by default, or the suffix in the pack's optifine/emissive.properties) sits in
+     * the same atlas as the sprite it lights. For every sprite a block model uses, this records the UV offset to its
+     * emissive sibling for each atlas grid cell (zero when there is none); terrain.metal then adds the sibling's texels
+     * at full brightness. Cheap when nothing changed: the bytes are compared before a new buffer is made.
+     */
+    private void uploadEmissiveMap(final Set<TextureAtlasSprite> modelSprites) {
+        byte[] bytes;
+        int emissiveSprites = 0;
+        try {
+            TextureAtlas atlas = Minecraft.getInstance().getAtlasManager().getAtlasOrThrow(net.minecraft.data.AtlasIds.BLOCKS);
+            TextureAtlasSprite missing = atlas.missingSprite();
+            this.emissiveSuffixes.clear();
+            int cell = 0;
+            int atlasWidth = 0;
+            int atlasHeight = 0;
+            List<int[]> rects = new ArrayList<>();
+            List<float[]> offsets = new ArrayList<>();
+            for (TextureAtlasSprite sprite : modelSprites) {
+                if (sprite.isAnimated()) {
+                    continue; // the atlas moves animated sprites' UVs every frame; ores and light sources are static
+                }
+                Identifier name = sprite.contents().name();
+                Identifier emissiveName = Identifier.fromNamespaceAndPath(name.getNamespace(), name.getPath() + this.emissiveSuffix(name.getNamespace()));
+                TextureAtlasSprite emissive = atlas.getSprite(emissiveName);
+                if (emissive == null || emissive == missing || emissive.isAnimated()
+                    || !emissive.contents().name().equals(emissiveName)) {
+                    continue;
+                }
+                if (emissive.contents().width() != sprite.contents().width() || emissive.contents().height() != sprite.contents().height()) {
+                    continue; // a differently sized sibling cannot be sampled with a plain UV offset
+                }
+                float du = emissive.getU0() - sprite.getU0();
+                float dv = emissive.getV0() - sprite.getV0();
+                if (du == 0.0F && dv == 0.0F) {
+                    continue;
+                }
+                atlasWidth = Math.max(atlasWidth, Math.round(sprite.contents().width() / (sprite.getU1() - sprite.getU0())));
+                atlasHeight = Math.max(atlasHeight, Math.round(sprite.contents().height() / (sprite.getV1() - sprite.getV0())));
+                int x0 = Math.round(sprite.getU0() * atlasWidth);
+                int y0 = Math.round(sprite.getV0() * atlasHeight);
+                int x1 = Math.round(sprite.getU1() * atlasWidth);
+                int y1 = Math.round(sprite.getV1() * atlasHeight);
+                cell = gcd(gcd(gcd(gcd(cell, x0), y0), x1), y1);
+                rects.add(new int[]{x0, y0, x1, y1});
+                offsets.add(new float[]{du, dv});
+            }
+            emissiveSprites = rects.size();
+            if (rects.isEmpty() || cell <= 0 || atlasWidth <= 0 || atlasHeight <= 0) {
+                bytes = new byte[16];
+            } else {
+                int gridW = (atlasWidth + cell - 1) / cell;
+                int gridH = (atlasHeight + cell - 1) / cell;
+                if ((long)gridW * gridH > 16L << 20) {
+                    LOGGER.warn("Ciderlight shaders: atlas grid too fine ({}x{}), its emissive textures are left out", gridW, gridH);
+                    bytes = new byte[16];
+                    emissiveSprites = 0;
+                } else {
+                    // Header: cell scale and grid size; then one (du, dv, present) per cell that has an emissive sibling.
+                    bytes = new byte[16 + gridW * gridH * 16];
+                    ByteBuffer buffer = ByteBuffer.wrap(bytes).order(ByteOrder.nativeOrder());
+                    buffer.putFloat(0, (float)atlasWidth / cell);
+                    buffer.putFloat(4, (float)atlasHeight / cell);
+                    buffer.putInt(8, gridW);
+                    buffer.putInt(12, gridH);
+                    for (int i = 0; i < rects.size(); i++) {
+                        int[] r = rects.get(i);
+                        float[] offset = offsets.get(i);
+                        for (int y = r[1] / cell; y < Math.min(gridH, r[3] / cell); y++) {
+                            for (int x = r[0] / cell; x < Math.min(gridW, r[2] / cell); x++) {
+                                int at = 16 + (y * gridW + x) * 16;
+                                buffer.putFloat(at, offset[0]);
+                                buffer.putFloat(at + 4, offset[1]);
+                                buffer.putFloat(at + 8, 1.0F);
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (RuntimeException e) {
+            LOGGER.warn("Ciderlight shaders: could not build the emissive map", e);
+            bytes = new byte[16];
+            emissiveSprites = 0;
+        }
+        if (DEBUG || MetalDebug.ENABLED) {
+            LOGGER.info("Ciderlight shaders: {} emissive block sprites in the block atlas", emissiveSprites);
+        }
+        this.uploadEmissiveBytes(bytes);
+    }
+
+    /** The suffix after a base sprite name that OptiFine packs use for the emissive layer ("_e" unless configured). */
+    private String emissiveSuffix(final String namespace) {
+        String cached = this.emissiveSuffixes.get(namespace);
+        if (cached != null) {
+            return cached;
+        }
+        String suffix = "_e";
+        try {
+            var resource = Minecraft.getInstance().getResourceManager()
+                .getResource(Identifier.fromNamespaceAndPath(namespace, "optifine/emissive.properties"));
+            if (resource.isPresent()) {
+                try (BufferedReader reader = new BufferedReader(new InputStreamReader(resource.get().open(), StandardCharsets.UTF_8))) {
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        line = line.trim();
+                        if (line.startsWith("suffix.emissive=")) {
+                            String value = line.substring("suffix.emissive=".length()).trim();
+                            if (!value.isEmpty()) {
+                                suffix = value;
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+        } catch (IOException | RuntimeException ignored) {
+            // the default suffix stands
+        }
+        this.emissiveSuffixes.put(namespace, suffix);
+        return suffix;
+    }
+
+    private void uploadEmissiveBytes(final byte[] bytes) {
+        if (this.emissiveBuffer != 0L && Arrays.equals(bytes, this.emissiveBytes)) {
+            return;
+        }
+        long buffer = MetalNative.bufferCreate(this.device.context(), bytes.length, false);
+        MemorySegment.ofAddress(MetalNative.bufferContents(buffer)).reinterpret(bytes.length).copyFrom(MemorySegment.ofArray(bytes));
+        MetalNative.setLabel(buffer, "Ciderlight emissive map");
+        long old = this.emissiveBuffer;
+        if (old != 0L) {
+            this.device.encoder().queueForDestroy(() -> MetalNative.release(old));
+        }
+        this.emissiveBuffer = buffer;
+        this.emissiveBytes = bytes;
+    }
+
+    /** The emissive map, or a zeroed header when nothing has one: the shader then adds nothing. */
+    private long emissiveBuffer() {
+        if (this.emissiveBuffer == 0L) {
+            this.uploadEmissiveBytes(new byte[16]);
+        }
+        return this.emissiveBuffer;
     }
 
     /** The sprite-map bytes for these sprites of one atlas: a header, then one byte per grid cell (foliage.metal). */
@@ -2778,7 +2936,7 @@ public final class MetalShaders implements Destroyable {
             this.farShadowTextures[1], this.extinctionTextures[0], this.extinctionTextures[1], this.shadowTexture, this.shadowSampler, this.opaqueColor, this.opaqueDepth,
             this.volumetricTextures[0], this.volumetricTextures[1], this.shadowColorTexture, this.shadowHistoryTextures[0], this.shadowHistoryTextures[1],
             this.translucentShadowHistoryTextures[0], this.translucentShadowHistoryTextures[1],
-            this.foliageBuffer, this.cloudMapTexture, this.frameConstantsTexture, this.lightningShadowTexture, this.handSpriteBuffer, this.airNoiseTexture,
+            this.foliageBuffer, this.emissiveBuffer, this.cloudMapTexture, this.frameConstantsTexture, this.lightningShadowTexture, this.handSpriteBuffer, this.airNoiseTexture,
             this.aoRawTexture, this.aoTextures[0], this.aoTextures[1]));
         for (long handle : handles) {
             if (handle != 0L) {
