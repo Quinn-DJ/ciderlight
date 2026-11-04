@@ -63,12 +63,14 @@ fragment void entity_shadow_fragment(ShadowOut in [[stage_in]],
 struct LightIn {
     float3 Position [[attribute(0)]];
     float2 UV0 [[attribute(2)]];
+    int2 UV1 [[attribute(3)]]; // overlay texture coordinates: non-zero while the mob/TNT flashes white (or red)
     int2 UV2 [[attribute(4)]];
 };
 
 struct LightOut {
     float4 position [[position]];
     float2 uv0;
+    int2 overlay;
     float blockLight;
 };
 
@@ -80,6 +82,7 @@ vertex LightOut entity_light_vertex(LightIn in [[stage_in]],
     out.position = frame.viewProj * float4(world.xyz, 1.0);
     out.position.y = -out.position.y; // match the backend's GL-style render target layout
     out.uv0 = in.UV0;
+    out.overlay = in.UV1;
     out.blockLight = saturate(float(in.UV2.x) / 240.0);
     return out;
 }
@@ -122,6 +125,7 @@ vertex LightOut particle_light_vertex(ParticleLightIn in [[stage_in]],
     out.position = frame.viewProj * float4(world.xyz, 1.0);
     out.position.y = -out.position.y;
     out.uv0 = in.UV0;
+    out.overlay = int2(0);
     out.blockLight = saturate(float(in.UV2.x) / 240.0);
     return out;
 }
@@ -141,6 +145,7 @@ vertex LightOut block_light_vertex(BlockLightIn in [[stage_in]],
     out.position = frame.viewProj * float4(world.xyz, 1.0);
     out.position.y = -out.position.y;
     out.uv0 = in.UV0;
+    out.overlay = int2(0);
     out.blockLight = saturate(float(in.UV2.x) / 240.0);
     return out;
 }
@@ -150,6 +155,11 @@ fragment float4 entity_light_fragment(LightOut in [[stage_in]],
                                       sampler atlasSampler [[sampler(0)]]) {
     if (atlas.sample(atlasSampler, in.uv0).a < 0.1) {
         discard_fragment();
+    }
+    // White flash (TNT, creeper swelling) and the red hurt overlay are added by vanilla after lighting. Mark them as
+    // emissive so the composite leaves them unshaded instead of darkening the flash with the sun/sky shade.
+    if (in.overlay.x != 0 || in.overlay.y != 0) {
+        return float4(0.0, 0.0, 0.0, ENTITY_GLOW_ALPHA);
     }
     return float4(0.0, 0.0, 0.0, encode_entity_light(in.blockLight));
 }
