@@ -31,6 +31,8 @@ Written for this backend, not ported from an OptiFine/Iris pack, so they only ru
 - **Lighting**: sun-aware direct and sky light replacing vanilla's fixed face shading, warm torch falloff, full-bright flames.
 - **Held light**: torches, lanterns and other light sources in hand light the area around the player (and other players).
 - **Emissive mobs**: glowing eyes and the Warden's bioluminescent layer stay lit in the dark.
+- **Explosion flashes**: the white flash before TNT and creepers explode (and the red hurt overlay) is drawn unshaded, so
+  the sun-shadow pass no longer darkens it.
 - **Shadows**: real-time sun and moon shadows, including foliage, with coloured light through stained glass, ice and water.
 - **Sky and atmosphere**: directional sky gradient, layered volumetric mist with light shafts and aerial perspective.
 - **Ambient occlusion**: screen-space GTAO for soft contact shadows.
