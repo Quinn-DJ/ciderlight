@@ -65,7 +65,17 @@ public class MetalDevice implements GpuDeviceBackend {
             limits[2] != 0 ? DeviceType.INTEGRATED : DeviceType.DISCRETE
         );
         this.encoder = new MetalCommandEncoder(this);
-        this.shaders = new MetalShaders(this, Quality.of(name));
+        Quality quality = Quality.of(name);
+        ShaderSettings settings = new ShaderSettings(
+            ShaderSetting.initialEnabled(),
+            quality == Quality.LOW,
+            ShaderToggle.WAVING.enabled(),
+            ShaderToggle.WATER_REFLECTIONS.enabled(),
+            ShaderToggle.WATER_WAVES.enabled()
+        );
+        ShaderSetting.started(settings);
+        MetalShaders.commitSettings(settings);
+        this.shaders = new MetalShaders(this, quality, settings);
         current = this;
     }
 

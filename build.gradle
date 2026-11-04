@@ -46,6 +46,7 @@ java {
 // Exercise binding-cache invalidation and compare cached encoder state against uncached state.
 tasks.register('compileBindingChecks', JavaCompile) {
 	source 'src/main/java/dev/ciderlight/backend/MetalBindingCache.java', 'tests/java'
+	exclude '**/ShaderSettingsChecks.java' // checked by compileSettingsChecks, needs ShaderSettings
 	classpath = files()
 	destinationDirectory = layout.buildDirectory.dir('binding-checks')
 }
@@ -56,6 +57,20 @@ tasks.register('checkBackendBindings', JavaExec) {
 	javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
 }
 tasks.named('check') { dependsOn 'checkBackendBindings' }
+
+// Exercise the setting snapshot's reload rules: only changes that reach a compiled shader source rebuild pipelines.
+tasks.register('compileSettingsChecks', JavaCompile) {
+	source 'src/main/java/dev/ciderlight/backend/ShaderSettings.java', 'tests/java/dev/ciderlight/backend/ShaderSettingsChecks.java'
+	classpath = files()
+	destinationDirectory = layout.buildDirectory.dir('settings-checks')
+}
+tasks.register('checkShaderSettings', JavaExec) {
+	dependsOn 'compileSettingsChecks'
+	classpath = files(layout.buildDirectory.dir('settings-checks'))
+	mainClass = 'dev.ciderlight.backend.ShaderSettingsChecks'
+	javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
+}
+tasks.named('check') { dependsOn 'checkShaderSettings' }
 
 tasks.register('compileShadowCasterChecks', JavaCompile) {
 	dependsOn 'classes'

@@ -47,7 +47,7 @@ public class GameRendererMixin {
      */
     @Inject(method = "useImprovedTransparency", at = @At("HEAD"), cancellable = true)
     private void ciderlight$classicTransparency(final CallbackInfoReturnable<Boolean> cir) {
-        if (MetalShaders.ENABLED) {
+        if (MetalShaders.enabled()) {
             cir.setReturnValue(false);
         }
     }
