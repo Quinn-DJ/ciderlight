@@ -55,8 +55,9 @@ one (Shadows off saves the most), and set the Render Scale (the world's resoluti
 Shadows, Ambient Occlusion and the Render Scale change straight away. The Shaders switch, Shaders Quality and
 the other three effects wait for the page's Apply button: click it and the world pauses for a moment while the
 shaders are rebuilt, then the new look is on. You don't need to restart the game.
-There is also a key to switch the shaders On and Off: Controls > Key Binds > Ciderlight > "Toggle Shaders"
-(default F10). It uses the quality kept on the page.
+There are also keys: Controls > Key Binds > Ciderlight > "Toggle Shaders" (default K) switches the shaders
+On and Off at the quality kept on the page, and "Ciderlight Settings" (default O) opens the Ciderlight
+page from the game. Both can be rebound.
 
 Which one to pick: Low on A-series or lower-tier M chips, High on everything else.
 A-series Macs and the plain M1, M2, M3 and M4 start on Low by themselves; all others start on High.
