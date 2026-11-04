@@ -3,6 +3,7 @@ package dev.ciderlight.mixin;
 import dev.ciderlight.Benchmark;
 import dev.ciderlight.backend.FramePacer;
 import dev.ciderlight.backend.HitchTrace;
+import dev.ciderlight.backend.ShaderReload;
 import net.minecraft.client.Minecraft;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -21,6 +22,7 @@ public class MinecraftMixin {
             Benchmark.skipBackupPrompt(minecraft);
         }
         FramePacer.worldTick(minecraft.level != null, minecraft.gui.screen() == null);
+        ShaderReload.tick();
         if (HitchTrace.ENABLED) {
             HitchTrace.tickStart(minecraft.level != null, minecraft.gui.screen() == null);
             if (!Benchmark.autoMoves()) {

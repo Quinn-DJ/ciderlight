@@ -85,21 +85,43 @@ import org.slf4j.Logger;
  * </ul>
  * Off when the Shaders setting in Video Settings is Off (ShaderSetting), or with -Dciderlight.shaders=false.
  */
-public final class MetalShaders {
+public final class MetalShaders implements Destroyable {
     private static final Logger LOGGER = LogUtils.getLogger();
-    public static final boolean ENABLED = System.getProperty("ciderlight.shaders") != null
-        ? !"false".equals(System.getProperty("ciderlight.shaders"))
-        : ShaderSetting.saved() != ShaderSetting.OFF;
     private static final boolean DEBUG = Boolean.getBoolean("ciderlight.shaderDebug");
     private static final boolean VL_HISTORY = !"false".equals(System.getProperty("ciderlight.vlHistory"));
 
     private static final boolean SHADOW_HISTORY = !"false".equals(System.getProperty("ciderlight.shadowHistory"));
+
+    /**
+     * The settings the pipelines in use were compiled for. MetalDevice sets it when the device is created and, with
+     * hot apply, before the pipelines are rebuilt: the frame reads it through the accessors below, so the settings a
+     * frame sees and the settings its pipelines were built with never differ.
+     */
+    private static volatile ShaderSettings committed = ShaderSettings.defaults();
+
+    static void commitSettings(final ShaderSettings settings) {
+        committed = settings;
+    }
+
+    /** Whether Ciderlight's shader pipeline runs at all (the Shaders setting in Video Settings). */
+    public static boolean enabled() {
+        return committed.shaders();
+    }
+
     /** Leaves and plants sway in the wind (Waving Plants on the settings page, -Dciderlight.waving). */
-    private static final boolean WAVING = ShaderToggle.WAVING.enabled();
+    static boolean waving() {
+        return committed.waving();
+    }
+
     /** Water mirrors the scene around it (screen-space reflections); off: the sky only (-Dciderlight.waterReflections). */
-    private static final boolean WATER_REFLECTIONS = ShaderToggle.WATER_REFLECTIONS.enabled();
+    static boolean waterReflections() {
+        return committed.waterReflections();
+    }
+
     /** Waves move across the water (water_surface.metal); off: the water is calm (-Dciderlight.waterWaves). */
-    private static final boolean WATER_WAVES = ShaderToggle.WATER_WAVES.enabled();
+    static boolean waterWaves() {
+        return committed.waterWaves();
+    }
 
     static final int KIND_NONE = 0;
     static final int KIND_SOLID = 1;
@@ -242,6 +264,8 @@ public final class MetalShaders {
 
     private final MetalDevice device;
     private final Quality quality;
+    /** The settings this generation of shaders and pipelines was built for (ShaderSettings). */
+    private final ShaderSettings settings;
     /** The near shadow map's resolution; the glass/water tint map has half of it (see shadow_fragment_translucent). */
     private final int shadowSize;
     private final int transmissionSize;
@@ -446,9 +470,10 @@ public final class MetalShaders {
     ) {
     }
 
-    MetalShaders(final MetalDevice device, final Quality quality) {
+    MetalShaders(final MetalDevice device, final Quality quality, final ShaderSettings settings) {
         this.device = device;
         this.quality = quality;
+        this.settings = settings;
         this.shadowSize = quality.shadowSize;
         this.transmissionSize = Math.max(1, quality.shadowSize / 2);
         this.farShadowSize = quality.farShadowSize;
@@ -456,7 +481,7 @@ public final class MetalShaders {
         this.entitySource = quality.defines() + loadSource("entity.metal");
         this.particleSource = quality.defines() + loadSource("particle.metal");
         this.compositeSource = quality.defines() + (Boolean.getBoolean("ciderlight.aoDebug") ? "#define MC_DEBUG_AO 1\n" : "") + loadSource("composite.metal");
-        if (ENABLED) {
+        if (settings.shaders()) {
             this.startPrebuild();
         }
     }
@@ -498,9 +523,9 @@ public final class MetalShaders {
             this.prebuild(AO_STATE, this.fullscreen("ao_fragment", AO_FORMAT, AO_STATE));
             this.prebuild(AO_FILTER_STATE, this.fullscreen("ao_filter_fragment", AO_FORMAT, AO_FILTER_STATE));
         }
-        if (this.quality.renderScale < 1.0F) {
-            this.prebuild(UPSCALE_STATE, this.fullscreen("upscale_fragment", COLOR_FORMAT, UPSCALE_STATE));
-        }
+        // Always, as the render scale can now be lowered while the game runs (RenderScaleSetting): no frame should pay
+        // for building the upscale pipeline when it first comes up.
+        this.prebuild(UPSCALE_STATE, this.fullscreen("upscale_fragment", COLOR_FORMAT, UPSCALE_STATE));
         this.prebuild(COMPOSITE_STATE, this.fullscreen("composite_fragment", COLOR_FORMAT, COMPOSITE_STATE));
         this.prebuild(CLOUD_SHADOW_STATE, this::buildCloudShadowState);
         this.prebuild(CLOUD_MAP_STATE, this::buildCloudMapState);
@@ -514,7 +539,7 @@ public final class MetalShaders {
      */
     void prebuildFor(final MetalRenderPipeline pipeline) {
         int[] descriptor = pipeline.shadowDescriptor();
-        if (!ENABLED || descriptor == null) {
+        if (!this.settings.shaders() || descriptor == null) {
             return;
         }
         if (pipeline.isLitParticle()) {
@@ -687,7 +712,7 @@ public final class MetalShaders {
     }
 
     public static boolean needsShadowCasters() {
-        return ENABLED && castersWanted && CASTERS;
+        return enabled() && castersWanted && CASTERS;
     }
 
     /** How far below its real place the first-person player's body is drawn; entity.metal's OWN_BODY_DROP must match. */
@@ -786,7 +811,7 @@ public final class MetalShaders {
 
     /** Keep vanilla fog for blindness/darkness and when another graphics backend is active. */
     public static boolean usesWaterScattering(final Camera camera) {
-        if (!ENABLED || !"Metal".equals(RenderSystem.getDevice().getDeviceInfo().backendName()) || camera.getFluidInCamera() != FogType.WATER) {
+        if (!enabled() || !"Metal".equals(RenderSystem.getDevice().getDeviceInfo().backendName()) || camera.getFluidInCamera() != FogType.WATER) {
             return false;
         }
         return !(camera.entity() instanceof LivingEntity living
@@ -797,7 +822,7 @@ public final class MetalShaders {
     static boolean usesAtmosphere() {
         Minecraft minecraft = Minecraft.getInstance();
         Camera camera = minecraft.gameRenderer.mainCamera();
-        if (!ENABLED || minecraft.level == null || !camera.isInitialized()
+        if (!enabled() || minecraft.level == null || !camera.isInitialized()
             || minecraft.level.dimensionType().skybox() != DimensionType.Skybox.OVERWORLD
             || camera.getFluidInCamera() != FogType.NONE) return false;
         return !(camera.entity() instanceof LivingEntity living
@@ -853,7 +878,7 @@ public final class MetalShaders {
     // ---- pipeline classification ----
 
     static int terrainKind(final String pipelineName) {
-        if (!ENABLED) {
+        if (!enabled()) {
             return KIND_NONE;
         }
         return switch (pipelineName) {
@@ -866,7 +891,7 @@ public final class MetalShaders {
 
     /** Glowing eyes (endermen, spiders, phantoms): marked as light sources for the composite, and cast no shadow. */
     static boolean isEmissiveLayer(final String pipelineName) {
-        return ENABLED && pipelineName.equals("minecraft:pipeline/eyes");
+        return enabled() && pipelineName.equals("minecraft:pipeline/eyes");
     }
 
     /**
@@ -876,7 +901,7 @@ public final class MetalShaders {
      * so they are lit like entities too: without this they cast no shadow and lost their torch light while moving.
      */
     static boolean castsEntityShadow(final String pipelineName) {
-        if (!ENABLED || !pipelineName.startsWith("minecraft:pipeline/")) {
+        if (!enabled() || !pipelineName.startsWith("minecraft:pipeline/")) {
             return false;
         }
         String name = pipelineName.substring("minecraft:pipeline/".length());
@@ -890,7 +915,7 @@ public final class MetalShaders {
      * the block-light marker or torch-lit particles go dark. They cast no shadows.
      */
     static boolean isLitParticle(final String pipelineName) {
-        return ENABLED && pipelineName.equals("minecraft:pipeline/opaque_particle");
+        return enabled() && pipelineName.equals("minecraft:pipeline/opaque_particle");
     }
 
     /** Uniform slot of each named Minecraft uniform block, in the order the terrain shader expects. */
@@ -927,10 +952,10 @@ public final class MetalShaders {
         }
         if (kind == KIND_TRANSLUCENT) {
             b.append("#define ALPHA_CUTOUT 0.1\n#define MC_REFLECT 1\n");
-            if (!WATER_REFLECTIONS) {
+            if (!waterReflections()) {
                 b.append("#define MC_NO_WATER_TRACE 1\n");
             }
-            if (!WATER_WAVES) {
+            if (!waterWaves()) {
                 b.append("#define MC_NO_WATER_WAVES 1\n");
             }
         }
@@ -974,7 +999,7 @@ public final class MetalShaders {
      * vertex buffer slot 0.
      */
     static String vertexLayoutDefines(final com.mojang.renderpearl.backend.api.BackendRenderPipeline.CreateInfo info) {
-        if (!WAVING) {
+        if (!waving()) {
             return "";
         }
         int stride = -1;
@@ -1867,8 +1892,18 @@ public final class MetalShaders {
         this.aoHistoryValid = true;
     }
 
+    /** The settings this generation was built for. */
+    ShaderSettings settings() {
+        return this.settings;
+    }
+
+    /** The quality this generation was built for. */
+    Quality quality() {
+        return this.quality;
+    }
+
     float renderScale() {
-        return this.quality.renderScale;
+        return RenderScaleSetting.effective(this.quality.renderScale);
     }
 
     /**
@@ -2733,9 +2768,8 @@ public final class MetalShaders {
         return a + (b - a) * t;
     }
 
-    void destroy() {
-        castersWanted = false;
-        casterView = null;
+    @Override
+    public void destroy() {
         // Libraries and pipeline states belong to the registry (built); the fields only cache them.
         for (java.util.concurrent.CompletableFuture<Long> build : this.built.values()) {
             Prebuild.releaseWhenDone(build, 0L);
@@ -2751,5 +2785,11 @@ public final class MetalShaders {
                 MetalNative.release(handle);
             }
         }
+    }
+
+    /** State shared by every generation: reset when the device closes, not when a generation is replaced. */
+    static void resetSharedState() {
+        castersWanted = false;
+        casterView = null;
     }
 }

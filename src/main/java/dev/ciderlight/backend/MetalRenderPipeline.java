@@ -68,7 +68,7 @@ public final class MetalRenderPipeline implements BackendRenderPipeline, Destroy
     ) {
         this.device = device;
         this.name = info.name();
-        this.blobShadow = MetalShaders.ENABLED && info.name().equals("minecraft:pipeline/entity_shadow");
+        this.blobShadow = MetalShaders.enabled() && info.name().equals("minecraft:pipeline/entity_shadow");
         this.vertexLibrary = vertexLibrary;
         this.vertexEntry = vertexEntry;
         this.fragmentLibrary = fragmentLibrary;
@@ -87,7 +87,7 @@ public final class MetalRenderPipeline implements BackendRenderPipeline, Destroy
         this.wireframe = info.polygonMode() == PolygonMode.WIREFRAME;
         this.primitive = MetalConst.primitive(info.primitiveTopology());
         this.fan = info.primitiveTopology() == PrimitiveTopology.TRIANGLE_FAN;
-        this.skyUniforms = MetalShaders.ENABLED && info.name().equals("minecraft:pipeline/sky")
+        this.skyUniforms = MetalShaders.enabled() && info.name().equals("minecraft:pipeline/sky")
             ? MetalShaders.indicesFor(info.uniforms(), "DynamicTransforms", "Projection") : null;
         this.terrainKind = MetalShaders.terrainKind(info.name());
         this.terrainUniforms = this.terrainKind != MetalShaders.KIND_NONE ? MetalShaders.indicesFor(info.uniforms()) : null;
@@ -201,7 +201,7 @@ public final class MetalRenderPipeline implements BackendRenderPipeline, Destroy
      * low sun gives the clouds a warm lit side and a cool shaded one.
      */
     private static MetalShaderCompiler.Result sunlitClouds(final String pipeline, final MetalShaderCompiler.Result msl) {
-        if (!MetalShaders.ENABLED || !pipeline.equals("minecraft:pipeline/clouds")) {
+        if (!MetalShaders.enabled() || !pipeline.equals("minecraft:pipeline/clouds")) {
             return msl;
         }
         String source = msl.source();
@@ -226,7 +226,7 @@ public final class MetalRenderPipeline implements BackendRenderPipeline, Destroy
      * times brighter, so its additive layers build up to a white-hot core with a wide glow.
      */
     private static MetalShaderCompiler.Result brightLightning(final String pipeline, final MetalShaderCompiler.Result msl) {
-        if (!MetalShaders.ENABLED || !pipeline.equals("minecraft:pipeline/lightning")) {
+        if (!MetalShaders.enabled() || !pipeline.equals("minecraft:pipeline/lightning")) {
             return msl;
         }
         if (!msl.source().contains("out.fragColor") || !msl.source().contains("return out;")) {
@@ -273,7 +273,7 @@ public final class MetalRenderPipeline implements BackendRenderPipeline, Destroy
      * other pipelines, or when the translated shader does not look as expected.
      */
     private static @Nullable String handShine(final String pipeline, final MetalShaderCompiler.Result msl) {
-        if (!MetalShaders.ENABLED
+        if (!MetalShaders.enabled()
             || !(pipeline.equals("minecraft:pipeline/item_cutout") || pipeline.equals("minecraft:pipeline/item_translucent")
                 || pipeline.equals("minecraft:pipeline/item_translucent_glint"))) {
             return null;
@@ -432,7 +432,7 @@ public final class MetalRenderPipeline implements BackendRenderPipeline, Destroy
     private static final int ALPHA_ZERO = 2;
 
     private static boolean isOpaqueCloud(final String pipeline) {
-        return MetalShaders.ENABLED && (pipeline.equals("minecraft:pipeline/clouds") || pipeline.equals("minecraft:pipeline/flat_clouds"));
+        return MetalShaders.enabled() && (pipeline.equals("minecraft:pipeline/clouds") || pipeline.equals("minecraft:pipeline/flat_clouds"));
     }
 
     private static int[] describe(final BackendRenderPipeline.CreateInfo info, final int alphaMode) {

@@ -312,7 +312,7 @@ public class MetalCommandEncoder implements CommandEncoderBackend {
             b.append(" depth=").append(depthAttachment == null ? "-" : depthAttachment.textureView().texture().getLabel());
             this.trace(b.toString());
         }
-        boolean main = MetalShaders.ENABLED && depth != 0L && count == 1 && "Main".equals(descriptor.label().get());
+        boolean main = MetalShaders.enabled() && depth != 0L && count == 1 && "Main".equals(descriptor.label().get());
         long frame = this.frame();
         if (main) {
             long start = System.nanoTime();
@@ -326,7 +326,7 @@ public class MetalCommandEncoder implements CommandEncoderBackend {
             MetalNative.profileLabel(descriptor.label().get());
         }
         long enc = MetalNative.passBegin(frame, colors, mips, clearMask, clears, depth, depthMip, clearDepth, clearDepthValue, width, height);
-        boolean hand = MetalShaders.ENABLED && "Item in hand".equals(descriptor.label().get());
+        boolean hand = MetalShaders.enabled() && "Item in hand".equals(descriptor.label().get());
         this.currentRenderPass = new MetalRenderPass(this.device, this, enc, descriptor.renderArea(), width, height, depthAttachment != null, main, hand);
         if (hand) {
             this.device.shaders().bindHand(enc, width, height);

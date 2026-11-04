@@ -29,9 +29,9 @@ enum Quality {
     final int fogRows;
     final int aoRows;
     /**
-     * The world's resolution as a fraction of the window's, in each direction (the Render Scale setting,
-     * RenderScaleSetting, and -Dciderlight.renderScale override it, 0.25 to 1). The HUD and menus are always drawn at
-     * the window's full resolution.
+     * This quality's own world resolution, in each direction: two thirds on Low, full on High. The Render Scale
+     * setting may override it; that choice applies immediately (RenderScaleSetting.effective, which also honours
+     * -Dciderlight.renderScale). The HUD and menus are always drawn at the window's full resolution.
      */
     final float renderScale;
 
@@ -42,10 +42,7 @@ enum Quality {
         this.farShadowFineSize = farShadowFineSize;
         this.fogRows = fogRows;
         this.aoRows = aoRows;
-        String forced = System.getProperty("ciderlight.renderScale");
-        Float chosen = RenderScaleSetting.savedScale();
-        float scale = forced != null ? Float.parseFloat(forced) : chosen != null ? chosen : renderScale;
-        this.renderScale = Math.clamp(scale, 0.25F, 1.0F);
+        this.renderScale = renderScale;
     }
 
     /** Prepended to every shader source: the march lengths in composite.metal and reflection.metal follow it. */

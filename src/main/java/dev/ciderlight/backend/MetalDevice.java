@@ -33,7 +33,8 @@ public class MetalDevice implements GpuDeviceBackend {
     private final long context;
     private final DeviceInfo deviceInfo;
     private final MetalCommandEncoder encoder;
-    private final MetalShaders shaders;
+    /** The shader generation the frame renders with; hot apply swaps it (ShaderReload). */
+    private volatile MetalShaders shaders;
     private final boolean debugging;
     private final Int2LongOpenHashMap depthStates = new Int2LongOpenHashMap();
     private final Map<TexelViewKey, Long> texelViews = new HashMap<>();
@@ -65,12 +66,32 @@ public class MetalDevice implements GpuDeviceBackend {
             limits[2] != 0 ? DeviceType.INTEGRATED : DeviceType.DISCRETE
         );
         this.encoder = new MetalCommandEncoder(this);
-        this.shaders = new MetalShaders(this, Quality.of(name));
+        Quality quality = Quality.of(name);
+        ShaderSettings settings = new ShaderSettings(
+            ShaderSetting.initialEnabled(),
+            quality == Quality.LOW,
+            ShaderToggle.WAVING.enabled(),
+            ShaderToggle.WATER_REFLECTIONS.enabled(),
+            ShaderToggle.WATER_WAVES.enabled()
+        );
+        ShaderSetting.started(settings);
+        MetalShaders.commitSettings(settings);
+        this.shaders = new MetalShaders(this, quality, settings);
         current = this;
     }
 
     MetalShaders shaders() {
         return this.shaders;
+    }
+
+    /** The settings the shaders in use were built for. */
+    ShaderSettings settings() {
+        return this.shaders.settings();
+    }
+
+    /** Swaps in another shader generation: hot apply does this before rebuilding the pipelines. */
+    void replaceShaders(final MetalShaders shaders) {
+        this.shaders = shaders;
     }
 
     long context() {
@@ -93,6 +114,7 @@ public class MetalDevice implements GpuDeviceBackend {
         }
         this.encoder.destroy();
         this.shaders.destroy();
+        MetalShaders.resetSharedState();
         this.depthStates.values().forEach(MetalNative::release);
         MetalNative.contextDestroy(this.context);
     }
@@ -160,6 +182,7 @@ public class MetalDevice implements GpuDeviceBackend {
 
     @Override
     public BackendRenderPipeline.Pending compilePipeline(final BackendRenderPipeline.CreateInfo createInfo) {
+        ShaderReload.notePipelineCompiled();
         MetalRenderPipeline pipeline = MetalRenderPipeline.compile(this, createInfo);
         return () -> pipeline;
     }

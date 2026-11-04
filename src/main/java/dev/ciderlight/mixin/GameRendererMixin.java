@@ -5,6 +5,7 @@ import com.mojang.blaze3d.pipeline.TextureTarget;
 import com.mojang.renderpearl.api.GpuFormat;
 import dev.ciderlight.backend.MetalShaders;
 import dev.ciderlight.backend.RenderScale;
+import dev.ciderlight.backend.ShaderReload;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.GameRenderer;
 import org.jspecify.annotations.Nullable;
@@ -47,7 +48,7 @@ public class GameRendererMixin {
      */
     @Inject(method = "useImprovedTransparency", at = @At("HEAD"), cancellable = true)
     private void ciderlight$classicTransparency(final CallbackInfoReturnable<Boolean> cir) {
-        if (MetalShaders.ENABLED) {
+        if (MetalShaders.enabled()) {
             cir.setReturnValue(false);
         }
     }
@@ -56,6 +57,17 @@ public class GameRendererMixin {
     private void ciderlight$resizeWorld(final int width, final int height, final CallbackInfo ci) {
         if (RenderScale.scale() < 1.0F) {
             this.ciderlight$sizeWorld(width, height);
+        }
+    }
+
+    /**
+     * While a hot apply reloads the shader pipelines, the installed pipelines and the settings have moved apart: skip
+     * the world draw so no frame mixes them. The GUI still renders, which is where the Apply progress is shown.
+     */
+    @Inject(method = "renderLevel", at = @At("HEAD"), cancellable = true)
+    private void ciderlight$hideWorldWhileApplying(final CallbackInfo ci) {
+        if (ShaderReload.applying()) {
+            ci.cancel();
         }
     }
 

@@ -52,10 +52,14 @@ Open **Options > Video Settings > Ciderlight...** (under the graphics preset):
   skips the shadow maps and light shafts, which is the biggest saving.
 - **Render Scale**: the world's resolution, Auto (the quality's own) or 50 to 100%.
 
-Shadows and Ambient Occlusion apply at once; everything else applies after a restart. All of it is saved in
-`config/ciderlight.properties`.
+**Shadows**, **Ambient Occlusion** and the **Render Scale** apply at once. The **Shaders** choice and the three compiled
+effects (**Waving Plants**, **Water Reflections**, **Water Waves**) are staged on the page and applied by its **Apply**
+button, which rebuilds the shader pipelines in place: the world pauses for a moment while that happens and the page
+shows the progress. Nothing here needs a restart. All of it is saved in `config/ciderlight.properties`.
 
 JVM `-D` overrides: `ciderlight.quality=low|high`, `ciderlight.shaders=false`, `ciderlight.renderScale=<0.25–1>`,
+`ciderlight.hotReload=false` (apply those settings only at the next start, the old behaviour),
+`ciderlight.reloadMode=auto|shader|packs` (how the pipelines are rebuilt; `auto` is the default),
 `ciderlight.shadowSize`, `ciderlight.shadowDistance`, `ciderlight.fogDistance`, `ciderlight.waterReflections=false`, `ciderlight.waterWaves=false`,
 `ciderlight.waving=false`, `ciderlight.ao=false`, `ciderlight.shadows=false`, `ciderlight.framePacing=true`, `ciderlight.debug=true`,
 `ciderlight.disable=true` (fall back to vanilla backends). An override wins over the settings page, which greys that
