@@ -52,8 +52,9 @@ In the game, go to Options > Video Settings and click "Ciderlight..." under the 
 - Off: Minecraft's normal look, still drawn with Metal.
 Below it you can turn Shadows, Waving Plants, Water Reflections, Water Waves and Ambient Occlusion off one by
 one (Shadows off saves the most), and set the Render Scale (the world's resolution).
-Shadows and Ambient Occlusion change straight away; the other settings apply after you quit and
-restart the game.
+Shadows, Ambient Occlusion and the Render Scale change straight away. The Shaders choice and the other three
+effects wait for the page's Apply button: click it and the world pauses for a moment while the shaders are
+rebuilt, then the new look is on. You don't need to restart the game.
 
 Which one to pick: Low on A-series or lower-tier M chips, High on everything else.
 A-series Macs and the plain M1, M2, M3 and M4 start on Low by themselves; all others start on High.
