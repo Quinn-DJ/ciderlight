@@ -5,9 +5,9 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * The Render Scale choice on the Ciderlight settings page (CiderlightSettingsScreen): the world's resolution as a
- * fraction of the window's (RenderScale), or Auto, the quality's own (two thirds on Low, full on High). Saved to
- * config/ciderlight.properties as "renderScale" (auto, or the fraction) and applied at the next start;
- * -Dciderlight.renderScale still overrides it.
+ * fraction of the window's (RenderScale), or Auto, the quality's own (two thirds on Low, full on High). A change
+ * applies immediately: GameRendererMixin sizes the world target from RenderScale every frame. Saved to
+ * config/ciderlight.properties as "renderScale" (auto, or the fraction); -Dciderlight.renderScale still overrides it.
  */
 public enum RenderScaleSetting {
     AUTO(0.0F, "Auto"),
@@ -18,8 +18,11 @@ public enum RenderScaleSetting {
     FULL(1.0F, "100%");
 
     private static final RenderScaleSetting SAVED = load();
-    /** Chosen on the settings page since the game started; applies at the next start. */
-    private static @Nullable RenderScaleSetting chosen;
+    /** The -Dciderlight.renderScale override, clamped, or null when there is none. */
+    private static final @Nullable Float FORCED = System.getProperty("ciderlight.renderScale") != null
+        ? Math.clamp(Float.parseFloat(System.getProperty("ciderlight.renderScale")), 0.25F, 1.0F) : null;
+    /** What this session runs with: the saved choice, updated as soon as the player picks another. */
+    private static RenderScaleSetting running = SAVED;
 
     /** The fraction in each direction, or 0 for the quality's own. */
     final float scale;
@@ -30,32 +33,37 @@ public enum RenderScaleSetting {
         this.label = label;
     }
 
-    /** The saved fraction, or null for the quality's own (Quality.renderScale). */
-    static @Nullable Float savedScale() {
-        return SAVED == AUTO ? null : SAVED.scale;
-    }
-
-    /** What this session started with. */
+    /** What this session runs with. */
     public static RenderScaleSetting running() {
-        return SAVED;
+        return running;
     }
 
-    /** What the next start will run with. */
+    /** The value the settings page shows: the choice already applies, so there is nothing pending. */
     public static RenderScaleSetting current() {
-        return chosen != null ? chosen : SAVED;
+        return running;
     }
 
     /** Whether -Dciderlight.renderScale sets it, so a choice here changes nothing until that is removed. */
     public static boolean forced() {
-        return System.getProperty("ciderlight.renderScale") != null;
+        return FORCED != null;
     }
 
-    public static boolean restartRequired() {
-        return !forced() && chosen != null && chosen != SAVED;
+    /**
+     * The world's resolution as a fraction of the window's: the -D override, the player's choice, or `auto` (the
+     * quality's own fraction) for Auto. Read every frame by RenderScale.
+     */
+    static float effective(final float auto) {
+        if (FORCED != null) {
+            return FORCED;
+        }
+        return running.scale == 0.0F ? auto : Math.clamp(running.scale, 0.25F, 1.0F);
     }
 
     public static void choose(final RenderScaleSetting setting) {
-        chosen = setting;
+        if (setting == running) {
+            return;
+        }
+        running = setting;
         CiderlightConfig.set("renderScale", setting == AUTO ? "auto" : Float.toString(setting.scale));
     }
 

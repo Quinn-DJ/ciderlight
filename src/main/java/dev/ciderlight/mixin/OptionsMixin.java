@@ -1,6 +1,5 @@
 package dev.ciderlight.mixin;
 
-import dev.ciderlight.backend.RenderScaleSetting;
 import dev.ciderlight.backend.ShaderSetting;
 import dev.ciderlight.backend.ShaderToggle;
 import net.minecraft.client.Options;
@@ -14,7 +13,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 public class OptionsMixin {
     @Inject(method = "isRestartRequiredToApplyVideoSettings", at = @At("RETURN"), cancellable = true)
     private void ciderlight$shadersNeedRestart(final CallbackInfoReturnable<Boolean> cir) {
-        if (ShaderSetting.restartRequired() || ShaderToggle.anyRestartRequired() || RenderScaleSetting.restartRequired()) {
+        if (ShaderSetting.restartRequired() || ShaderToggle.anyRestartRequired()) {
             cir.setReturnValue(true);
         }
     }

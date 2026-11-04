@@ -498,9 +498,9 @@ public final class MetalShaders {
             this.prebuild(AO_STATE, this.fullscreen("ao_fragment", AO_FORMAT, AO_STATE));
             this.prebuild(AO_FILTER_STATE, this.fullscreen("ao_filter_fragment", AO_FORMAT, AO_FILTER_STATE));
         }
-        if (this.quality.renderScale < 1.0F) {
-            this.prebuild(UPSCALE_STATE, this.fullscreen("upscale_fragment", COLOR_FORMAT, UPSCALE_STATE));
-        }
+        // Always, as the render scale can now be lowered while the game runs (RenderScaleSetting): no frame should pay
+        // for building the upscale pipeline when it first comes up.
+        this.prebuild(UPSCALE_STATE, this.fullscreen("upscale_fragment", COLOR_FORMAT, UPSCALE_STATE));
         this.prebuild(COMPOSITE_STATE, this.fullscreen("composite_fragment", COLOR_FORMAT, COMPOSITE_STATE));
         this.prebuild(CLOUD_SHADOW_STATE, this::buildCloudShadowState);
         this.prebuild(CLOUD_MAP_STATE, this::buildCloudMapState);
@@ -1868,7 +1868,7 @@ public final class MetalShaders {
     }
 
     float renderScale() {
-        return this.quality.renderScale;
+        return RenderScaleSetting.effective(this.quality.renderScale);
     }
 
     /**

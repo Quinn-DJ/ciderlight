@@ -22,10 +22,10 @@ import org.jspecify.annotations.Nullable;
 /**
  * Ciderlight's settings, opened from the Ciderlight button in Video Settings (VideoSettingsScreenMixin): the Shaders
  * quality, the effects that can be turned off one by one (ShaderToggle) and the world's render scale. Everything here
- * is saved to config/ciderlight.properties. Shadows and Ambient Occlusion apply at once; the rest apply after
- * restarting the game, as the shader pipelines are built with them, so a changed value says so in its tooltip and
- * Video Settings shows its restart notice. An option set by its
- * -Dciderlight.* override is greyed out, as the override would win after the restart.
+ * is saved to config/ciderlight.properties. Shadows, Ambient Occlusion and the render scale apply at once; the rest
+ * apply after restarting the game, as the shader pipelines are built with them, so a changed value says so in its
+ * tooltip and Video Settings shows its restart notice. An option set by its -Dciderlight.* override is greyed out, as
+ * the override wins.
  */
 public class CiderlightSettingsScreen extends OptionsSubScreen {
     private static final Component TITLE = Component.literal("Ciderlight Settings");
@@ -36,7 +36,7 @@ public class CiderlightSettingsScreen extends OptionsSubScreen {
             + "Off keeps the Metal renderer with Minecraft's own look.");
     private static final Component RENDER_SCALE_TOOLTIP = Component.literal(
         "The world's resolution as a share of the window's; the HUD and menus stay sharp. Lower is faster. "
-            + "Auto: two thirds on Low, full on High.");
+            + "Auto: two thirds on Low, full on High. Applies immediately.");
 
     /** The options that only mean something with shaders on: greyed out while Shaders is Off. */
     private final List<OptionInstance<?>> effects = new ArrayList<>();
@@ -74,10 +74,10 @@ public class CiderlightSettingsScreen extends OptionsSubScreen {
                 this.forced.add(option);
             }
         }
-        Component renderScaleNote = RenderScaleSetting.forced() ? forcedNote("renderScale") : RESTART;
+        Component renderScaleNote = forcedNote("renderScale");
         OptionInstance<RenderScaleSetting> renderScale = new OptionInstance<>(
             "Render Scale",
-            value -> tooltip(RENDER_SCALE_TOOLTIP, RenderScaleSetting.forced() || value != RenderScaleSetting.running() ? renderScaleNote : null),
+            value -> tooltip(RENDER_SCALE_TOOLTIP, RenderScaleSetting.forced() ? renderScaleNote : null),
             (caption, value) -> Component.literal(value.label),
             new OptionInstance.Enum<>(List.of(RenderScaleSetting.values()), Codec.STRING.xmap(RenderScaleSetting::valueOf, RenderScaleSetting::name)),
             RenderScaleSetting.current(),
