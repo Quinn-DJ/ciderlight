@@ -897,9 +897,13 @@ public final class MetalShaders implements Destroyable {
         };
     }
 
-    /** Glowing eyes (endermen, spiders, phantoms): marked as light sources for the composite, and cast no shadow. */
+    /**
+     * Glowing layers: eyes (endermen, spiders, phantoms, creakings, copper golems) and the bioluminescent layer that
+     * vanilla draws for the Warden. They are marked as light sources for the composite, and cast no shadow.
+     */
     static boolean isEmissiveLayer(final String pipelineName) {
-        return enabled() && pipelineName.equals("minecraft:pipeline/eyes");
+        return enabled() && (pipelineName.equals("minecraft:pipeline/eyes")
+            || pipelineName.equals("minecraft:pipeline/entity_translucent_emissive"));
     }
 
     /**
