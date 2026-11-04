@@ -68,5 +68,7 @@ TIPS
 - Install it on its own first, without other graphics mods.
 - It works on any server (it only changes your graphics).
 - For a new version, just swap the old jar for the new one.
+- Resource packs that use the OptiFine emissive texture format ("_e" textures) work: the glowing parts stay lit in
+  the dark. OptiFine connected textures (CTM) and CIT are not supported.
 - Something wrong? Send me a screenshot plus the file logs/latest.log from your
   instance or minecraft folder.
