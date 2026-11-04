@@ -89,6 +89,13 @@ public enum ShaderToggle {
         }
     }
 
+    /** Commits every staged compiled effect (live ones are never staged). Called by the Apply button. */
+    public static void commitAll() {
+        for (ShaderToggle toggle : values()) {
+            toggle.commit();
+        }
+    }
+
     /** Commits the staged choice: called by the Apply button once the pipelines were rebuilt. */
     void commit() {
         Boolean staged = this.chosen;

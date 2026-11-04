@@ -85,7 +85,7 @@ import org.slf4j.Logger;
  * </ul>
  * Off when the Shaders setting in Video Settings is Off (ShaderSetting), or with -Dciderlight.shaders=false.
  */
-public final class MetalShaders {
+public final class MetalShaders implements Destroyable {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final boolean DEBUG = Boolean.getBoolean("ciderlight.shaderDebug");
     private static final boolean VL_HISTORY = !"false".equals(System.getProperty("ciderlight.vlHistory"));
@@ -1892,6 +1892,16 @@ public final class MetalShaders {
         this.aoHistoryValid = true;
     }
 
+    /** The settings this generation was built for. */
+    ShaderSettings settings() {
+        return this.settings;
+    }
+
+    /** The quality this generation was built for. */
+    Quality quality() {
+        return this.quality;
+    }
+
     float renderScale() {
         return RenderScaleSetting.effective(this.quality.renderScale);
     }
@@ -2758,9 +2768,8 @@ public final class MetalShaders {
         return a + (b - a) * t;
     }
 
-    void destroy() {
-        castersWanted = false;
-        casterView = null;
+    @Override
+    public void destroy() {
         // Libraries and pipeline states belong to the registry (built); the fields only cache them.
         for (java.util.concurrent.CompletableFuture<Long> build : this.built.values()) {
             Prebuild.releaseWhenDone(build, 0L);
@@ -2776,5 +2785,11 @@ public final class MetalShaders {
                 MetalNative.release(handle);
             }
         }
+    }
+
+    /** State shared by every generation: reset when the device closes, not when a generation is replaced. */
+    static void resetSharedState() {
+        castersWanted = false;
+        casterView = null;
     }
 }
