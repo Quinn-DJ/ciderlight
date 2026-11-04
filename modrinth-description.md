@@ -33,13 +33,12 @@ Vanilla resource packs keep working.
 
 ## Shader settings
 
-Go to **Options > Video Settings** and click **Ciderlight...** under the graphics preset. **Shaders** switches between:
+Go to **Options > Video Settings** and click **Ciderlight...** under the graphics preset. **Shaders** switches Ciderlight's built-in shaders **On** or **Off** (Off is Minecraft's normal look, still drawn with Metal), and **Shaders Quality** picks:
 
 - **High**: everything at full quality.
-- **Low**: smaller shadow maps, coarser fog, and the world drawn at a lower resolution. Much lighter on the graphics chip, with most of the look.
-- **Off**: Minecraft's normal look, still drawn with Metal.
+- **Low**: smaller shadow maps, coarser fog, and the world drawn at a lower resolution. Much lighter on the graphics chip, with most of the look. The quality is kept while the shaders are off.
 
-Below it you can turn **Shadows**, **Waving Plants**, **Water Reflections**, **Water Waves** and **Ambient Occlusion** off one by one (Shadows off saves the most), and set the **Render Scale**. Shadows, Ambient Occlusion and the Render Scale change straight away. The **Shaders** choice and the other three effects are staged and applied by the page's **Apply** button, which rebuilds the shaders in place: the world pauses for a moment and the page shows the progress, with no game restart. Pick **Low** on A-series or lower-tier M chips, and **High** on everything else. A-series Macs and the plain M1, M2, M3 and M4 start on Low by themselves; all others start on High.
+Below it you can turn **Shadows**, **Waving Plants**, **Water Reflections**, **Water Waves** and **Ambient Occlusion** off one by one (Shadows off saves the most), and set the **Render Scale**. Shadows, Ambient Occlusion and the Render Scale change straight away. The **Shaders** switch, **Shaders Quality** and the other three effects are staged and applied by the page's **Apply** button, which rebuilds the shaders in place: the world pauses for a moment and the page shows the progress, with no game restart. **Toggle Shaders** (default **F10**, rebindable under Controls > Key Binds) switches the shaders on and off at the kept quality. Pick **Low** on A-series or lower-tier M chips, and **High** on everything else. A-series Macs and the plain M1, M2, M3 and M4 start on Low by themselves; all others start on High.
 
 ## Installing
 

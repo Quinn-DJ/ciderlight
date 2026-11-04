@@ -45,16 +45,18 @@ Mods that draw with NeoForge's stencil support may look wrong: Ciderlight doesn'
 
 SHADER SETTINGS
 In the game, go to Options > Video Settings and click "Ciderlight..." under the graphics preset.
-"Shaders" switches between:
+"Shaders" switches the built-in shaders On or Off; "Shaders Quality" picks Low or High:
 - High: everything at full quality.
 - Low: smaller shadow maps, coarser fog, and the world drawn at a lower resolution.
-  Much lighter on the graphics chip, with most of the look.
+  Much lighter on the graphics chip, with most of the look. The quality is kept when the shaders are off.
 - Off: Minecraft's normal look, still drawn with Metal.
 Below it you can turn Shadows, Waving Plants, Water Reflections, Water Waves and Ambient Occlusion off one by
 one (Shadows off saves the most), and set the Render Scale (the world's resolution).
-Shadows, Ambient Occlusion and the Render Scale change straight away. The Shaders choice and the other three
-effects wait for the page's Apply button: click it and the world pauses for a moment while the shaders are
-rebuilt, then the new look is on. You don't need to restart the game.
+Shadows, Ambient Occlusion and the Render Scale change straight away. The Shaders switch, Shaders Quality and
+the other three effects wait for the page's Apply button: click it and the world pauses for a moment while the
+shaders are rebuilt, then the new look is on. You don't need to restart the game.
+There is also a key to switch the shaders On and Off: Controls > Key Binds > Ciderlight > "Toggle Shaders"
+(default F10). It uses the quality kept on the page.
 
 Which one to pick: Low on A-series or lower-tier M chips, High on everything else.
 A-series Macs and the plain M1, M2, M3 and M4 start on Low by themselves; all others start on High.
