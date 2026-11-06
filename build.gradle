@@ -10,6 +10,20 @@ sourceSets.main.java.srcDir 'src/fabric/java'
 dependencies {
 	minecraft "com.mojang:minecraft:${project.minecraft_version}"
 	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
+
+	// Non-remapping Loom (MC 26.x is unobfuscated): a plain project dependency is the documented
+	// cross-project form. A standalone build of this folder instead consumes the core published
+	// to mavenLocal (see README / PLAN.md §3.5).
+	if (rootProject.findProject(':cidercore') != null) {
+		implementation project(':cidercore')
+	} else {
+		implementation "dev.cidercore:cidercore:${project.cidercore_version}"
+	}
+}
+
+repositories {
+	// Only reached by a standalone build that resolves the published core (see above).
+	mavenLocal()
 }
 
 // Objective-C bridge to Metal, compiled with the system clang and bundled in the jar.
@@ -33,8 +47,10 @@ processResources {
 	inputs.property "version", version
 	filesMatching("fabric.mod.json") { expand "version": version }
 	// Apache-2.0: the licence and the notice travel with the jar.
-	from(rootProject.file("LICENSE")) { into 'META-INF' }
-	from(rootProject.file("NOTICE")) { into 'META-INF' }
+	// Project-relative so it keeps working when this folder is a subproject of the
+	// cidermods umbrella build (rootProject there is not a mod repository).
+	from(file('LICENSE')) { into 'META-INF' }
+	from(file('NOTICE')) { into 'META-INF' }
 }
 
 tasks.withType(JavaCompile).configureEach { it.options.release = 25 }
