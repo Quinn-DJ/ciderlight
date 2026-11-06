@@ -139,30 +139,17 @@ public final class CiderlightFrameExtension implements FrameExtension {
 
     @Override
     public void onTerrainDraw(final TerrainDraw draw) {
-        this.shaders.capture(new MetalShaders.TerrainDraw(
-            draw.kind(), draw.shadowDescriptor(), draw.vertexBuffer(), draw.vertexOffset(), draw.instanceBuffer(),
-            draw.instanceOffset(), draw.indexBuffer(), draw.indexType(), draw.commands(), draw.commandsOffset(), draw.drawCount(),
-            draw.globals(), draw.globalsOffset(), draw.projectionContents(), draw.terrainContents(), draw.fogContents(),
-            draw.atlas(), draw.atlasSampler(), draw.commandsAddress(), draw.sectionsAddress(), draw.sectionCount(),
-            draw.sectionStride(), draw.sectionPosOffset()
-        ));
+        this.shaders.capture(draw);
     }
 
     @Override
     public void onEntityDraw(final EntityDraw draw) {
-        this.shaders.capture(new MetalShaders.EntityDraw(
-            draw.shadowDescriptor(), draw.vertexBuffer(), draw.vertexOffset(), draw.indexBuffer(), draw.indexType(),
-            draw.indexCount(), draw.firstIndex(), draw.vertexBase(), draw.instanceCount(), draw.firstInstance(), draw.transforms(),
-            draw.transformsOffset(), draw.atlas(), draw.atlasSampler(), draw.particle(), draw.particleAtlas(), draw.emissive()
-        ));
+        this.shaders.capture(draw);
     }
 
     @Override
     public void onCloudDraw(final CloudDraw draw) {
-        this.shaders.capture(new MetalShaders.CloudDraw(
-            draw.indexBuffer(), draw.indexType(), draw.indexCount(), draw.firstIndex(), draw.vertexBase(), draw.transforms(),
-            draw.transformsOffset(), draw.info(), draw.infoOffset(), draw.faces()
-        ));
+        this.shaders.capture(draw);
     }
 
     @Override

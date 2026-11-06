@@ -1,64 +1,28 @@
 package dev.ciderlight.backend;
 
-import com.mojang.logging.LogUtils;
-import dev.cidercore.platform.LoaderPaths;
-import java.io.IOException;
-import java.io.Reader;
-import java.io.Writer;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.Properties;
+import dev.cidercore.api.CidercoreApi;
+import dev.cidercore.api.ConfigFile;
 import org.jspecify.annotations.Nullable;
-import org.slf4j.Logger;
 
 /**
- * config/ciderlight.properties: what the Ciderlight settings page (CiderlightSettingsScreen) saves. Every setting there
- * applies at the next start, so the file is read once when the game starts and a change only rewrites it: this
- * session keeps running with the values it started with.
+ * config/ciderlight.properties: what the Ciderlight settings page (CiderlightSettingsScreen) saves.
+ *
+ * <p>The file handling now lives in the core ({@link ConfigFile}); this class keeps the shader module's file name and
+ * the two read/write helpers the settings classes use. Saving a key rewrites the file at once (so the next session
+ * starts with it), while {@link #saved(String)} is what the current session started with.</p>
  */
 final class CiderlightConfig {
-    private static final Logger LOGGER = LogUtils.getLogger();
-    private static final Path FILE = LoaderPaths.configDir().resolve("ciderlight.properties");
-    /** The file as the game started. */
-    private static final Properties SAVED = load();
-    /** The file with this session's changes, written out on every change. */
-    private static final Properties CHANGED = copy(SAVED);
+	private static final ConfigFile FILE = CidercoreApi.config("ciderlight");
 
-    private CiderlightConfig() {
-    }
+	private CiderlightConfig() {
+	}
 
-    /** The value saved when the game started, or null if there was none. */
-    static @Nullable String saved(final String key) {
-        return SAVED.getProperty(key);
-    }
+	/** The value saved when the game started, or null if there was none. */
+	static @Nullable String saved(final String key) {
+		return FILE.saved(key);
+	}
 
-    static synchronized void set(final String key, final String value) {
-        CHANGED.setProperty(key, value);
-        try {
-            Files.createDirectories(FILE.getParent());
-            try (Writer out = Files.newBufferedWriter(FILE)) {
-                CHANGED.store(out, "Ciderlight settings (Options > Video Settings > Ciderlight...), applied after a restart");
-            }
-        } catch (IOException e) {
-            LOGGER.warn("Ciderlight: could not save {}", FILE, e);
-        }
-    }
-
-    private static Properties load() {
-        Properties properties = new Properties();
-        if (Files.exists(FILE)) {
-            try (Reader in = Files.newBufferedReader(FILE)) {
-                properties.load(in);
-            } catch (IOException e) {
-                LOGGER.warn("Ciderlight: could not read {}", FILE, e);
-            }
-        }
-        return properties;
-    }
-
-    private static Properties copy(final Properties source) {
-        Properties properties = new Properties();
-        properties.putAll(source);
-        return properties;
-    }
+	static void set(final String key, final String value) {
+		FILE.set(key, value);
+	}
 }

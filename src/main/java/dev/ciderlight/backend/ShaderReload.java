@@ -1,273 +1,175 @@
 package dev.ciderlight.backend;
 
 import com.mojang.logging.LogUtils;
-import java.util.concurrent.CompletableFuture;
+import dev.cidercore.api.CidercoreApi;
+import dev.cidercore.api.PipelineReload;
+import dev.cidercore.backend.MetalDevice;
 import java.util.function.Consumer;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.renderer.RenderPipelines;
-import net.minecraft.client.renderer.ShaderManager;
-import net.minecraft.server.packs.resources.PreparableReloadListener;
-import net.minecraft.util.Util;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
-import dev.cidercore.api.FrameExtension;
-import dev.cidercore.backend.MetalDevice;
 
 /**
  * Applies ShaderSetting and the compiled ShaderToggle effects without restarting the game: the settings page stages a
- * choice (see ShaderSetting/ShaderToggle), then its Apply button calls {@link #apply}, which
+ * choice (see ShaderSetting/ShaderToggle), then its Apply button calls {@link #apply}. The game-side reload/rollback
+ * state machine now lives in the core ({@link PipelineReload}); this class only builds the new shader generation and
+ * turns it into the core's swap/rollback callbacks.
  *
- * <ol>
- *   <li>swaps in a new MetalShaders generation for the staged settings,</li>
- *   <li>rebuilds every render pipeline through the game's own ShaderManager reload path (the one resource packs use),
- *       so MetalDevice.compilePipeline builds them from the new shader sources,</li>
- *   <li>keeps the previous generation until the game installed the rebuilt pipelines, and rolls back if it could not.</li>
- * </ol>
+ * <p>While a reload runs, GameRendererMixin (core) skips renderLevel: the previous pipelines are still the installed
+ * ones, but the settings have already moved on, so a mixed frame is avoided by not drawing the world. The GUI keeps
+ * rendering, which is what shows the settings page (and its progress) during the reload.</p>
  *
- * While it runs, GameRendererMixin skips renderLevel: the previous pipelines are still the installed ones, but the
- * settings have already moved on, so a mixed frame is avoided by not drawing the world. The GUI keeps rendering, which
- * is what shows the settings page (and its progress) during the reload.
- *
- * A failed apply keeps the previous shaders and leaves the staged values in place, so the player can retry. If the
- * direct ShaderManager reload fails before any pipeline was compiled, the whole resource-pack reload is tried once as
- * a fallback (-Dciderlight.reloadMode=shader|packs|auto, auto by default).
+ * <p>A failed apply keeps the previous shaders and leaves the staged values in place, so the player can retry. If the
+ * direct ShaderManager reload fails before any pipeline was compiled, the core's automatic mode falls back to a full
+ * resource-pack reload once ({@code -Dciderlight.reloadMode=shader|packs|auto}, auto by default).</p>
  */
 public final class ShaderReload {
-    /** -Dciderlight.hotReload=false restores the restart-to-apply behaviour. */
-    public static final boolean HOT_ENABLED = Boolean.parseBoolean(System.getProperty("ciderlight.hotReload", "true"));
-    private static final Logger LOGGER = LogUtils.getLogger();
-    /** -Dciderlight.reloadMode: auto (ShaderManager, falling back to a full resource reload), shader, or packs. */
-    private static final String MODE = System.getProperty("ciderlight.reloadMode", "auto");
-    private static final long SLOW_MS = 30_000L;
+	/** -Dciderlight.hotReload=false restores the restart-to-apply behaviour. */
+	public static final boolean HOT_ENABLED = CidercoreApi.pipelineReload().hotApplyEnabled();
+	private static final Logger LOGGER = LogUtils.getLogger();
 
-    private static boolean applying;
-    private static long startedAt;
-    private static int compiled;
-    private static int total;
-    private static boolean slowWarned;
-    private static @Nullable MetalShaders previousShaders;
-    private static @Nullable ShaderSettings previousSettings;
-    private static @Nullable Consumer<Throwable> onFailure;
-    private static @Nullable Runnable onSuccess;
+	private ShaderReload() {
+	}
 
-    private ShaderReload() {
-    }
+	private static PipelineReload reload() {
+		return CidercoreApi.pipelineReload();
+	}
 
-    /** Whether a reload is under way: GameRendererMixin skips the world draw, and the settings page shows progress. */
-    public static boolean applying() {
-        return applying;
-    }
+	/** Whether a reload is under way: GameRendererMixin skips the world draw, and the settings page shows progress. */
+	public static boolean applying() {
+		return reload().applying();
+	}
 
-    /** Pipelines compiled by the reload so far, and how many the game should compile (for the settings page). */
-    public static int compiled() {
-        return compiled;
-    }
+	/** Pipelines compiled by the reload so far, and how many the game should compile (for the settings page). */
+	public static int compiled() {
+		return reload().compiled();
+	}
 
-    public static int total() {
-        return total;
-    }
+	public static int total() {
+		return reload().total();
+	}
 
-    /** Whether the reload has been running longer than expected (the settings page says so; the reload keeps going). */
-    public static boolean slow() {
-        return applying && Util.getMillis() - startedAt > SLOW_MS;
-    }
+	/** Whether the reload has been running longer than expected (the settings page says so; the reload keeps going). */
+	public static boolean slow() {
+		return reload().slow();
+	}
 
-    /** True while a shader setting or a compiled effect has a staged value for the Apply button. */
-    public static boolean pendingChanges() {
-        return ShaderSetting.pending() || ShaderQuality.pending() || ShaderToggle.anyPending();
-    }
+	/** True while a shader setting or a compiled effect has a staged value for the Apply button. */
+	public static boolean pendingChanges() {
+		return ShaderSetting.pending() || ShaderQuality.pending() || ShaderToggle.anyPending();
+	}
 
-    /** Called from MetalDevice.compilePipeline for every pipeline the reload rebuilds. */
-    static void notePipelineCompiled() {
-        compiled++;
-    }
+	/** Called from the core for every pipeline it compiles while a reload is in flight. */
+	static void notePipelineCompiled() {
+		reload().notePipelineCompiled();
+	}
 
-    /**
-     * Applies the staged settings. Must be called on the render thread (the settings page is); the callbacks run on it
-     * too, after the reload finished or failed.
-     */
-    public static void apply(final Runnable success, final Consumer<Throwable> failure) {
-        if (!HOT_ENABLED) {
-            return;
-        }
-        if (applying) {
-            return;
-        }
-        MetalDevice device = MetalDevice.current;
-        if (device == null) {
-            failure.accept(new IllegalStateException("Ciderlight is not the active renderer"));
-            return;
-        }
-        CiderlightFrameExtension extension = activeExtension(device);
-        if (extension == null) {
-            failure.accept(new IllegalStateException("Ciderlight's shader module is not installed"));
-            return;
-        }
-        Quality quality = resolveQuality(extension.quality());
-        ShaderSettings target = new ShaderSettings(
-            ShaderSetting.current() == ShaderSetting.ON,
-            quality == Quality.LOW,
-            ShaderToggle.WAVING.current(),
-            ShaderToggle.WATER_REFLECTIONS.current(),
-            ShaderToggle.WATER_WAVES.current()
-        );
-        ShaderSettings current = extension.settings();
-        if (!current.needsPipelineReload(target)) {
-            // Nothing reaches a compiled shader source (a choice while the shaders are off, or one made moot by a -D
-            // override): commit it and save the config without rebuilding anything.
-            ShaderSetting.commit();
-            ShaderQuality.commit();
-            ShaderToggle.commitAll();
-            success.run();
-            return;
-        }
+	/**
+	 * Applies the staged settings. Must be called on the render thread (the settings page is); the callbacks run on it
+	 * too, after the reload finished or failed.
+	 */
+	public static void apply(final Runnable success, final Consumer<Throwable> failure) {
+		if (!HOT_ENABLED || applying()) {
+			return;
+		}
+		MetalDevice device = MetalDevice.current;
+		if (device == null) {
+			failure.accept(new IllegalStateException("Ciderlight is not the active renderer"));
+			return;
+		}
+		CiderlightFrameExtension extension = activeExtension(device);
+		if (extension == null) {
+			failure.accept(new IllegalStateException("Ciderlight's shader module is not installed"));
+			return;
+		}
+		Quality quality = resolveQuality(extension.quality());
+		ShaderSettings target = new ShaderSettings(
+			ShaderSetting.current() == ShaderSetting.ON,
+			quality == Quality.LOW,
+			ShaderToggle.WAVING.current(),
+			ShaderToggle.WATER_REFLECTIONS.current(),
+			ShaderToggle.WATER_WAVES.current()
+		);
+		ShaderSettings current = extension.settings();
+		if (!current.needsPipelineReload(target)) {
+			// Nothing reaches a compiled shader source (a choice while the shaders are off, or one made moot by a -D
+			// override): commit it and save the config without rebuilding anything.
+			ShaderSetting.commit();
+			ShaderQuality.commit();
+			ShaderToggle.commitAll();
+			success.run();
+			return;
+		}
 
-        applying = true;
-        startedAt = Util.getMillis();
-        compiled = 0;
-        total = RenderPipelines.requiredPipelines().size() + RenderPipelines.optionalPipelines().size();
-        slowWarned = false;
-        previousShaders = extension.shaders();
-        previousSettings = previousShaders.settings();
-        onSuccess = success;
-        onFailure = failure;
-        LOGGER.info("Ciderlight: applying shaders {} ({} pipelines)", describe(target), total);
+		MetalShaders previous = extension.shaders();
+		ShaderSettings previousSettings = previous.settings();
+		MetalShaders next;
+		try {
+			next = new MetalShaders(device, quality, target);
+		} catch (RuntimeException e) {
+			failure.accept(e);
+			return;
+		}
+		LOGGER.info("Ciderlight: applying shaders {}", describe(target));
+		PipelineReload.PipelineGeneration generation = new PipelineReload.PipelineGeneration() {
+			@Override
+			public void swapIn() {
+				extension.replaceShaders(next);
+				MetalShaders.commitSettings(target);
+			}
 
-        MetalShaders next;
-        try {
-            next = new MetalShaders(device, quality, target);
-        } catch (RuntimeException e) {
-            finishFailure(device, e);
-            return;
-        }
-        extension.replaceShaders(next);
-        MetalShaders.commitSettings(target);
-        reload(game()).whenComplete((ignored, throwable) -> game().execute(() -> {
-            if (throwable == null) {
-                finishSuccess(device, previousShaders);
-            } else {
-                finishFailure(device, throwable);
-            }
-        }));
-    }
+			@Override
+			public void swapBack() {
+				extension.replaceShaders(previous);
+				MetalShaders.commitSettings(previousSettings);
+			}
 
-    /** Called once per client tick from MinecraftMixin: warns once when a reload is unusually slow. */
-    public static void tick() {
-        if (applying && !slowWarned && Util.getMillis() - startedAt > SLOW_MS) {
-            slowWarned = true;
-            LOGGER.warn("Ciderlight: applying shaders is still running after {} ms; waiting for the shader compiler",
-                Util.getMillis() - startedAt);
-        }
-    }
+			@Override
+			public void commitSettings() {
+				ShaderSetting.commit();
+				ShaderQuality.commit();
+				ShaderToggle.commitAll();
+			}
 
-    private static Minecraft game() {
-        return Minecraft.getInstance();
-    }
+			@Override
+			public void releasePrevious() {
+				device.releaseAfterSubmit(previous::destroy);
+			}
 
-    /** The quality the staged settings ask for: the -D override wins, then the picked Low/High, then the current one. */
-    private static Quality resolveQuality(final Quality current) {
-        String forced = System.getProperty("ciderlight.quality", "").toLowerCase(java.util.Locale.ROOT);
-        if (forced.equals("low")) {
-            return Quality.LOW;
-        }
-        if (forced.equals("high")) {
-            return Quality.HIGH;
-        }
-        if (ShaderSetting.current() == ShaderSetting.OFF) {
-            return current; // switching the shaders off: the quality only matters to Auto render scale while on
-        }
-        return ShaderQuality.current() == ShaderQuality.LOW ? Quality.LOW : Quality.HIGH;
-    }
+			@Override
+			public void releaseNew() {
+				device.releaseAfterSubmit(next::destroy);
+			}
+		};
+		reload().apply(generation, success, failure);
+	}
 
-    /**
-     * Rebuilds the pipelines through ShaderManager's reload: the same compile-and-swap path resource packs use, without
-     * reloading the packs themselves. It compiles RenderPipelines.requiredPipelines/optionalPipelines through our
-     * MetalDevice.compilePipeline, and applies the new PipelineCache on the render thread.
-     */
-    private static CompletableFuture<Void> reload(final Minecraft minecraft) {
-        String mode = MODE.toLowerCase(java.util.Locale.ROOT);
-        if (mode.equals("packs")) {
-            return minecraft.reloadResourcePacks();
-        }
-        CompletableFuture<Void> direct;
-        try {
-            ShaderManager shaderManager = minecraft.getShaderManager();
-            PreparableReloadListener.SharedState sharedState = new PreparableReloadListener.SharedState(minecraft.getResourceManager());
-            PreparableReloadListener.PreparationBarrier barrier = CompletableFuture::completedFuture;
-            direct = shaderManager.reload(sharedState, Util.backgroundExecutor(), barrier, minecraft);
-        } catch (RuntimeException e) {
-            direct = CompletableFuture.failedFuture(e);
-        }
-        if (mode.equals("shader")) {
-            return direct;
-        }
-        // auto: the direct path may not even start (it is public, but not an entry point the game documents). If no
-        // pipeline was compiled yet, the whole resource-pack reload is tried once; that path is the game's own.
-        return direct.handle((ignored, throwable) -> {
-            if (throwable == null) {
-                return CompletableFuture.<Void>completedFuture(null);
-            }
-            if (compiled == 0) {
-                LOGGER.warn("Ciderlight: the shader-only reload could not start ({}); reloading the resource packs instead",
-                    throwable.toString());
-                return minecraft.reloadResourcePacks();
-            }
-            return CompletableFuture.<Void>failedFuture(throwable);
-        }).thenCompose(java.util.function.Function.identity());
-    }
+	/** Called once per client tick from the core's Minecraft mixin: warns once when a reload is unusually slow. */
+	public static void tick() {
+		reload().tick();
+	}
 
-    private static void finishSuccess(final MetalDevice device, final @Nullable MetalShaders previous) {
-        // Match the side effects a full resource reload has: failed post effects are reset.
-        game().gameRenderer.onResourceManagerReload(game().getResourceManager());
-        ShaderSetting.commit();
-        ShaderQuality.commit();
-        ShaderToggle.commitAll();
-        if (previous != null) {
-            device.releaseAfterSubmit(previous::destroy);
-        }
-        long elapsed = Util.getMillis() - startedAt;
-        applying = false;
-        previousShaders = null;
-        previousSettings = null;
-        Runnable success = onSuccess;
-        onSuccess = null;
-        onFailure = null;
-        LOGGER.info("Ciderlight: applied shaders in {} ms ({} pipelines)", elapsed, compiled);
-        if (success != null) {
-            success.run();
-        }
-    }
+	private static @Nullable CiderlightFrameExtension activeExtension(final MetalDevice device) {
+		return device.frameExtension() instanceof CiderlightFrameExtension extension ? extension : null;
+	}
 
-    /** The shader module's extension for this device, or null when the device runs core-only. */
-    private static @Nullable CiderlightFrameExtension activeExtension(final MetalDevice device) {
-        return device.frameExtension() instanceof CiderlightFrameExtension extension ? extension : null;
-    }
+	/** The quality the staged settings ask for: the -D override wins, then the picked Low/High, then the current one. */
+	private static Quality resolveQuality(final Quality current) {
+		String forced = System.getProperty("ciderlight.quality", "").toLowerCase(java.util.Locale.ROOT);
+		if (forced.equals("low")) {
+			return Quality.LOW;
+		}
+		if (forced.equals("high")) {
+			return Quality.HIGH;
+		}
+		if (ShaderSetting.current() == ShaderSetting.OFF) {
+			return current; // switching the shaders off: the quality only matters to Auto render scale while on
+		}
+		return ShaderQuality.current() == ShaderQuality.LOW ? Quality.LOW : Quality.HIGH;
+	}
 
-    private static void finishFailure(final MetalDevice device, final Throwable throwable) {
-        CiderlightFrameExtension extension = activeExtension(device);
-        MetalShaders failed = extension == null ? null : extension.shaders();
-        if (extension != null && previousShaders != null && failed != previousShaders) {
-            // The new generation was already committed (the reload started); put the old one back and release it later.
-            extension.replaceShaders(previousShaders);
-            MetalShaders.commitSettings(previousSettings != null ? previousSettings : previousShaders.settings());
-            device.releaseAfterSubmit(failed::destroy);
-        }
-        long elapsed = Util.getMillis() - startedAt;
-        applying = false;
-        slowWarned = false;
-        previousShaders = null;
-        previousSettings = null;
-        onSuccess = null;
-        Consumer<Throwable> failure = onFailure;
-        onFailure = null;
-        LOGGER.warn("Ciderlight: could not apply shaders after {} ms, keeping the previous ones: {}", elapsed, throwable.toString());
-        if (failure != null) {
-            failure.accept(throwable);
-        }
-    }
-
-    private static String describe(final ShaderSettings settings) {
-        return (settings.shaders() ? "on" : "off") + ", " + (settings.lowQuality() ? "low" : "high")
-            + ", waving=" + settings.waving() + ", reflections=" + settings.waterReflections() + ", waves=" + settings.waterWaves();
-    }
+	private static String describe(final ShaderSettings settings) {
+		return (settings.shaders() ? "on" : "off") + ", " + (settings.lowQuality() ? "low" : "high")
+			+ ", waving=" + settings.waving() + ", reflections=" + settings.waterReflections() + ", waves=" + settings.waterWaves();
+	}
 }

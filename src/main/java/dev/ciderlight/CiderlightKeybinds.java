@@ -3,6 +3,7 @@ package dev.ciderlight;
 import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.logging.LogUtils;
 import dev.ciderlight.backend.ShaderReload;
+import dev.cidercore.api.KeybindGroup;
 import dev.ciderlight.backend.ShaderSetting;
 import dev.ciderlight.gui.CiderlightSettingsScreen;
 import net.minecraft.client.KeyMapping;
@@ -29,6 +30,18 @@ public final class CiderlightKeybinds {
     private static KeyMapping.@Nullable Category category;
     private static @Nullable KeyMapping toggleShaders;
     private static @Nullable KeyMapping openSettings;
+    /** The hub-facing view of these keys: the core settings hub appends them to Options and ticks them. */
+    public static final KeybindGroup GROUP = new KeybindGroup() {
+        @Override
+        public KeyMapping[] mappings() {
+            return CiderlightKeybinds.mappings();
+        }
+
+        @Override
+        public void tick(final Minecraft minecraft) {
+            CiderlightKeybinds.tick(minecraft);
+        }
+    };
 
     private CiderlightKeybinds() {
     }

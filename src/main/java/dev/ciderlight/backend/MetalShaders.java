@@ -9,6 +9,10 @@ import com.mojang.renderpearl.api.pipeline.BlendFactor;
 import com.mojang.renderpearl.api.pipeline.BlendOp;
 import com.mojang.renderpearl.api.pipeline.CompareOp;
 import dev.cidercore.api.MetalDeviceApi;
+import dev.cidercore.api.PipelineFlags;
+import dev.cidercore.api.frame.CloudDraw;
+import dev.cidercore.api.frame.EntityDraw;
+import dev.cidercore.api.frame.TerrainDraw;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
@@ -134,10 +138,6 @@ public final class MetalShaders implements Destroyable {
         return committed.waterWaves();
     }
 
-    static final int KIND_NONE = 0;
-    static final int KIND_SOLID = 1;
-    static final int KIND_CUTOUT = 2;
-    static final int KIND_TRANSLUCENT = 3;
 
     /** Argument-table indices shared with the .metal sources. */
     private static final int FRAME_INDEX = 14;
@@ -155,7 +155,6 @@ public final class MetalShaders implements Destroyable {
     private static final int CLOUD_SHADOW_INDEX = 8;
     private static final int FRAME_CONSTANTS_INDEX = 7;
     /** The lowest texture slot bindFrame fills; a pipeline with more uniforms than this binds over it. */
-    static final int FIRST_FRAME_SLOT = 6;
     /** Items whose sprites shine when held in first person (CiderlightPipelineTransformer.handShine). */
     private static final String[] METAL_MATERIALS = {"iron", "golden", "diamond", "netherite", "copper", "chainmail"};
     private static final String[] METAL_SHAPES = {
@@ -460,33 +459,6 @@ public final class MetalShaders implements Destroyable {
     /** The camera position the captured draws are relative to, for culling their sections in the shadow passes. */
     private Vec3 shadowCullCamera = Vec3.ZERO;
 
-    /** One captured terrain multidraw from the main pass. Contents addresses point at shared memory. */
-    record TerrainDraw(
-        int kind, int[] shadowDescriptor, long vertexBuffer, long vertexOffset, long instanceBuffer, long instanceOffset, long indexBuffer,
-        int indexType, long commands, long commandsOffset, int drawCount, long globals, long globalsOffset, long projectionContents,
-        long terrainContents, long fogContents, long atlas, long atlasSampler,
-        // For culling sections in the shadow passes: CPU addresses of the draw arguments and of the per-section instance
-        // data (0 when they cannot be read on the CPU), how many instances are readable there, and where a section's
-        // block position lies in an instance.
-        long commandsAddress, long sectionsAddress, int sectionCount, int sectionStride, int sectionPosOffset
-    ) {
-    }
-
-    /** One captured cloud draw from the main pass: vertices are generated from the CloudFaces buffer, as in vanilla. */
-    record CloudDraw(
-        long indexBuffer, int indexType, int indexCount, int firstIndex, int vertexBase, long transforms, long transformsOffset,
-        long info, long infoOffset, long faces
-    ) {
-    }
-
-    /** One captured entity/item draw from the main pass. */
-    record EntityDraw(
-        int[] shadowDescriptor, long vertexBuffer, long vertexOffset, long indexBuffer, int indexType, int indexCount, int firstIndex,
-        int vertexBase, int instanceCount, int firstInstance, long transforms, long transformsOffset, long atlas, long atlasSampler,
-        boolean particle, boolean particleAtlas, boolean emissive
-    ) {
-    }
-
     MetalShaders(final MetalDeviceApi device, final Quality quality, final ShaderSettings settings) {
         this.device = device;
         this.quality = quality;
@@ -568,16 +540,16 @@ public final class MetalShaders implements Destroyable {
             this.prebuild(entityEmissiveKey(descriptor), () -> this.buildEntityEmissiveState(descriptor));
             return;
         }
-        if (kind == KIND_NONE) {
+        if (kind == PipelineFlags.KIND_NONE) {
             this.prebuild(entityShadowKey(descriptor), () -> this.buildEntityShadowState(descriptor));
             this.prebuild(entityLightKey(false, descriptor), () -> this.buildEntityLightState(false, descriptor));
             return;
         }
         this.prebuild(SHADOW_LIBRARY, this::buildShadowLibrary);
-        if (kind == KIND_TRANSLUCENT) {
+        if (kind == PipelineFlags.KIND_TRANSLUCENT) {
             this.prebuild(SHADOW_TRANSLUCENT_STATE, () -> this.buildTranslucentShadowState(descriptor));
         } else {
-            boolean cutout = kind == KIND_CUTOUT;
+            boolean cutout = kind == PipelineFlags.KIND_CUTOUT;
             this.prebuild(cutout ? SHADOW_CUTOUT_STATE : SHADOW_SOLID_STATE, () -> this.buildTerrainShadowState(cutout, descriptor));
         }
     }
@@ -644,7 +616,7 @@ public final class MetalShaders implements Destroyable {
         if (idx == null) {
             throw new IllegalStateException("The shadow library needs a terrain pipeline first");
         }
-        return MetalNative.libraryCreate(this.device.context(), vertexLayout + header(idx, KIND_SOLID) + this.terrainSource);
+        return MetalNative.libraryCreate(this.device.context(), vertexLayout + header(idx, PipelineFlags.KIND_SOLID) + this.terrainSource);
     }
 
     private long buildSkyState() {
@@ -896,13 +868,13 @@ public final class MetalShaders implements Destroyable {
 
     static int terrainKind(final String pipelineName) {
         if (!enabled()) {
-            return KIND_NONE;
+            return PipelineFlags.KIND_NONE;
         }
         return switch (pipelineName) {
-            case "minecraft:pipeline/solid_terrain_multidraw" -> KIND_SOLID;
-            case "minecraft:pipeline/cutout_terrain_multidraw" -> KIND_CUTOUT;
-            case "minecraft:pipeline/translucent_terrain_multidraw" -> KIND_TRANSLUCENT;
-            default -> KIND_NONE;
+            case "minecraft:pipeline/solid_terrain_multidraw" -> PipelineFlags.KIND_SOLID;
+            case "minecraft:pipeline/cutout_terrain_multidraw" -> PipelineFlags.KIND_CUTOUT;
+            case "minecraft:pipeline/translucent_terrain_multidraw" -> PipelineFlags.KIND_TRANSLUCENT;
+            default -> PipelineFlags.KIND_NONE;
         };
     }
 
@@ -968,10 +940,10 @@ public final class MetalShaders implements Destroyable {
         b.append("#define IDX_FOG ").append(idx[3]).append('\n');
         b.append("#define IDX_LIGHTMAP ").append(idx[4]).append('\n');
         b.append("#define IDX_ATLAS ").append(idx[5]).append('\n');
-        if (kind == KIND_CUTOUT) {
+        if (kind == PipelineFlags.KIND_CUTOUT) {
             b.append("#define ALPHA_CUTOUT 0.5\n");
         }
-        if (kind == KIND_TRANSLUCENT) {
+        if (kind == PipelineFlags.KIND_TRANSLUCENT) {
             b.append("#define ALPHA_CUTOUT 0.1\n#define MC_REFLECT 1\n");
             if (!waterReflections()) {
                 b.append("#define MC_NO_WATER_TRACE 1\n");
@@ -991,7 +963,7 @@ public final class MetalShaders implements Destroyable {
      * returns its library handle. Throws if the pipeline's uniforms would overlap the slots bindFrame fills.
      */
     long compileParticleLibrary(final List<BindGroupLayout.UniformDescription> uniforms) {
-        if (uniforms.size() > FIRST_FRAME_SLOT) {
+        if (uniforms.size() > PipelineFlags.FIRST_FRAME_SLOT) {
             throw new IllegalStateException("too many uniforms (" + uniforms.size() + ")");
         }
         int[] idx = indicesFor(uniforms, "DynamicTransforms", "Projection", "Sampler0", "Sampler2");
@@ -2167,7 +2139,7 @@ public final class MetalShaders implements Destroyable {
         MetalNative.passSetBuffer(enc, FOLIAGE_INDEX, this.foliageBuffer(), 0L, MetalConst.STAGE_VERTEX);
         boolean bound = false;
         for (TerrainDraw draw : this.terrainDraws) {
-            if (draw.kind() != KIND_TRANSLUCENT) {
+            if (draw.kind() != PipelineFlags.KIND_TRANSLUCENT) {
                 continue;
             }
             if (!bound) {
@@ -2270,7 +2242,7 @@ public final class MetalShaders implements Destroyable {
     private void drawOpaqueShadowCasters(final long enc, final int[] idx, @Nullable final MemorySegment uniforms) {
         int currentKind = -1;
         for (TerrainDraw draw : this.terrainDraws) {
-            if (draw.kind() == KIND_TRANSLUCENT) {
+            if (draw.kind() == PipelineFlags.KIND_TRANSLUCENT) {
                 continue;
             }
             if (draw.kind() != currentKind) {
@@ -2280,7 +2252,7 @@ public final class MetalShaders implements Destroyable {
             MetalNative.passSetVertexBuffer(enc, 0, draw.vertexBuffer(), draw.vertexOffset());
             MetalNative.passSetVertexBuffer(enc, 1, draw.instanceBuffer(), draw.instanceOffset());
             MetalNative.passSetBuffer(enc, idx[0], draw.globals(), draw.globalsOffset(), MetalConst.STAGE_VERTEX);
-            if (draw.kind() == KIND_CUTOUT) {
+            if (draw.kind() == PipelineFlags.KIND_CUTOUT) {
                 MetalNative.passSetTexture(enc, idx[5], draw.atlas(), draw.atlasSampler(), MetalConst.STAGE_FRAGMENT);
             }
             this.drawShadowSections(enc, draw, uniforms);
@@ -2456,7 +2428,7 @@ public final class MetalShaders implements Destroyable {
     }
 
     private long terrainShadowState(final TerrainDraw draw) {
-        boolean cutout = draw.kind() == KIND_CUTOUT;
+        boolean cutout = draw.kind() == PipelineFlags.KIND_CUTOUT;
         long state = cutout ? this.shadowCutoutState : this.shadowSolidState;
         if (state == 0L) {
             int[] descriptor = draw.shadowDescriptor();
