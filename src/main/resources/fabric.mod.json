@@ -19,6 +19,9 @@
     ],
     "cidercore:settings": [
       "dev.ciderlight.CiderlightSettingsContributor"
+    ],
+    "cidercore:module": [
+      "dev.ciderlight.CiderlightModule"
     ]
   },
   "mixins": [

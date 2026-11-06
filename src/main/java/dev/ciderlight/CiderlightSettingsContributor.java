@@ -8,7 +8,6 @@ import dev.ciderlight.gui.CiderlightSettingsPage;
 import dev.cidercore.api.KeybindGroup;
 import dev.cidercore.api.SettingsContributor;
 import dev.cidercore.api.SettingsPage;
-import dev.ciderlight.debug.HotApplyTest;
 import java.util.List;
 
 /**
@@ -29,11 +28,6 @@ public final class CiderlightSettingsContributor implements SettingsContributor 
 	@Override
 	public List<KeybindGroup> keybinds() {
 		return List.of(CiderlightKeybinds.GROUP);
-	}
-
-	@Override
-	public void tick(final net.minecraft.client.Minecraft minecraft) {
-		HotApplyTest.tick(minecraft);
 	}
 
 	@Override
