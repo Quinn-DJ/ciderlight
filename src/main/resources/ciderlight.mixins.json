@@ -4,7 +4,6 @@
   "compatibilityLevel": "JAVA_25",
   "client": [
     "MinecraftMixin",
-    "PreferredGraphicsApiMixin",
     "SectionOcclusionGraphMixin",
     "WaterFogEnvironmentMixin",
     "ScreenEffectRendererMixin",
@@ -12,15 +11,8 @@
     "LevelRendererMixin",
     "EntityRendererMixin",
     "BlockEntityRenderDispatcherMixin",
-    "GameRendererMixin",
-    "RenderTargetAccessor",
     "VideoSettingsScreenMixin",
-    "OptionsMixin",
-    "RenderPipelinesMixin",
-    "BackupConfirmScreenAccessor",
-    "SDLEventHandlerMixin",
-    "MinecraftServerMixin",
-    "WindowMixin"
+    "OptionsMixin"
   ],
   "injectors": {
     "defaultRequire": 1

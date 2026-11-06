@@ -1,9 +1,9 @@
 package dev.ciderlight.mixin;
 
-import dev.ciderlight.Benchmark;
+import dev.cidercore.Benchmark;
 import dev.ciderlight.CiderlightKeybinds;
-import dev.ciderlight.backend.FramePacer;
-import dev.ciderlight.backend.HitchTrace;
+import dev.cidercore.backend.FramePacer;
+import dev.cidercore.backend.HitchTrace;
 import dev.ciderlight.backend.ShaderReload;
 import net.minecraft.client.Minecraft;
 import org.spongepowered.asm.mixin.Mixin;

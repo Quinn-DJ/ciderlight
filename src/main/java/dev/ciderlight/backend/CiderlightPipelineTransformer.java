@@ -10,6 +10,7 @@ import dev.cidercore.api.ShaderPatch;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import dev.cidercore.backend.MetalRenderPipeline;
 
 /**
  * Ciderlight's classifier and patcher for the render pipelines the Metal backend compiles.

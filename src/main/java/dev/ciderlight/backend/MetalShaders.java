@@ -73,6 +73,14 @@ import org.joml.Vector3f;
 import org.jspecify.annotations.Nullable;
 import org.lwjgl.system.MemoryUtil;
 import org.slf4j.Logger;
+import dev.cidercore.backend.Destroyable;
+import dev.cidercore.backend.HitchTrace;
+import dev.cidercore.backend.MetalBuffer;
+import dev.cidercore.backend.MetalConst;
+import dev.cidercore.backend.MetalDebug;
+import dev.cidercore.backend.MetalNative;
+import dev.cidercore.backend.MetalRenderPipeline;
+import dev.cidercore.backend.Prebuild;
 
 /**
  * Ciderlight's built-in shader pipeline.

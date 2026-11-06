@@ -4,9 +4,8 @@ plugins {
 
 base { archivesName = "ciderlight" }
 
-// src/main is shared with the NeoForge build (neoforge/); src/fabric holds what only the Fabric build needs.
-sourceSets.main.java.srcDir 'src/fabric/java'
-
+// The Metal backend, native bridge, core mixins and dev tools now live in cidercore/ (B2).
+// src/main here is the shader/lighting module only; the NeoForge build is frozen until B5/B7.
 dependencies {
 	minecraft "com.mojang:minecraft:${project.minecraft_version}"
 	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
@@ -26,23 +25,7 @@ repositories {
 	mavenLocal()
 }
 
-// Objective-C bridge to Metal, compiled with the system clang and bundled in the jar.
-def nativeSrc = file("src/main/native")
-def nativeOut = layout.buildDirectory.file("native/libciderlight.dylib")
-tasks.register('buildNative', Exec) {
-	inputs.dir nativeSrc
-	outputs.file nativeOut
-	doFirst { nativeOut.get().asFile.parentFile.mkdirs() }
-	commandLine 'clang', '-dynamiclib', '-fobjc-arc', '-O2', '-arch', 'arm64',
-		'-mmacosx-version-min=14.0', '-Wall',
-		'-framework', 'Metal', '-framework', 'QuartzCore', '-framework', 'Foundation', '-framework', 'AppKit',
-		'-o', nativeOut.get().asFile.absolutePath,
-		"${nativeSrc}/ciderlight.m"
-}
-
 processResources {
-	dependsOn 'buildNative'
-	from(nativeOut) { into 'natives' }
 	def version = project.version
 	inputs.property "version", version
 	filesMatching("fabric.mod.json") { expand "version": version }
@@ -58,21 +41,6 @@ tasks.withType(JavaCompile).configureEach { it.options.release = 25 }
 java {
 	toolchain { languageVersion = JavaLanguageVersion.of(25) }
 }
-
-// Exercise binding-cache invalidation and compare cached encoder state against uncached state.
-tasks.register('compileBindingChecks', JavaCompile) {
-	source 'src/main/java/dev/ciderlight/backend/MetalBindingCache.java', 'tests/java'
-	exclude '**/ShaderSettingsChecks.java' // checked by compileSettingsChecks, needs ShaderSettings
-	classpath = files()
-	destinationDirectory = layout.buildDirectory.dir('binding-checks')
-}
-tasks.register('checkBackendBindings', JavaExec) {
-	dependsOn 'compileBindingChecks'
-	classpath = files(layout.buildDirectory.dir('binding-checks'))
-	mainClass = 'dev.ciderlight.backend.MetalBindingCacheChecks'
-	javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
-}
-tasks.named('check') { dependsOn 'checkBackendBindings' }
 
 // Exercise the setting snapshot's reload rules: only changes that reach a compiled shader source rebuild pipelines.
 tasks.register('compileSettingsChecks', JavaCompile) {

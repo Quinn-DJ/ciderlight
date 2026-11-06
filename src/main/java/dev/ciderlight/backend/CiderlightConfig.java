@@ -1,7 +1,7 @@
 package dev.ciderlight.backend;
 
 import com.mojang.logging.LogUtils;
-import dev.ciderlight.platform.LoaderPaths;
+import dev.cidercore.platform.LoaderPaths;
 import java.io.IOException;
 import java.io.Reader;
 import java.io.Writer;

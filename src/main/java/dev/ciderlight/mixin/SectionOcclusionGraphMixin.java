@@ -1,6 +1,6 @@
 package dev.ciderlight.mixin;
 
-import dev.ciderlight.backend.HitchTrace;
+import dev.cidercore.backend.HitchTrace;
 import dev.ciderlight.backend.MetalShaders;
 import dev.ciderlight.backend.ShadowCasterSelection;
 import dev.ciderlight.backend.ShadowReceiverFrustum;

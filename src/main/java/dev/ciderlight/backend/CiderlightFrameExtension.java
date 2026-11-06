@@ -10,6 +10,7 @@ import dev.cidercore.api.frame.EntityDraw;
 import dev.cidercore.api.frame.TerrainDraw;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import org.jspecify.annotations.Nullable;
+import dev.cidercore.backend.MetalTexture;
 
 /**
  * Ciderlight's shader pipeline as a {@link FrameExtension}: the core backend talks to this interface instead of to

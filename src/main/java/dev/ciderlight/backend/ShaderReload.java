@@ -11,6 +11,7 @@ import net.minecraft.util.Util;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import dev.cidercore.api.FrameExtension;
+import dev.cidercore.backend.MetalDevice;
 
 /**
  * Applies ShaderSetting and the compiled ShaderToggle effects without restarting the game: the settings page stages a
