@@ -107,6 +107,10 @@ from source; releases use that build's JAR unchanged.
 
 - Ambient occlusion and reflections only see what is on screen.
 - Entities in caves can be darkened by the sun shadow test.
+- On a 16 GB Mac, a render distance of 32 with the shaders on can use up the unified memory shared by the game, the
+  Metal backend and everything else: Metal command buffers then fail with "Insufficient Memory" and new chunks may stop
+  appearing. Ciderlight's own chunk buffers stay around 550 MB at 32 chunks, so this is total memory pressure rather
+  than a chunk-mesh leak. 16 chunks (12 with other memory-heavy mods) is the safe setting.
 - No bloom/HDR.
 - OptiFine/Iris shader packs (e.g. Complementary) are not supported.
 - Of the OptiFine resource-pack features, block emissive textures are supported: an `_e` texture next to a block sprite
