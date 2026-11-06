@@ -10,6 +10,7 @@ import com.mojang.renderpearl.api.textures.GpuTexture;
 import com.mojang.renderpearl.api.textures.GpuTextureView;
 import com.mojang.renderpearl.backend.api.CommandEncoderBackend;
 import com.mojang.renderpearl.backend.api.RenderPassBackend;
+import dev.cidercore.api.FrameExtension;
 import java.nio.ByteBuffer;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -312,11 +313,12 @@ public class MetalCommandEncoder implements CommandEncoderBackend {
             b.append(" depth=").append(depthAttachment == null ? "-" : depthAttachment.textureView().texture().getLabel());
             this.trace(b.toString());
         }
-        boolean main = MetalShaders.enabled() && depth != 0L && count == 1 && "Main".equals(descriptor.label().get());
+        FrameExtension extension = this.device.frameExtension();
+        boolean main = extension != null && extension.isMainPass(descriptor);
         long frame = this.frame();
         if (main) {
             long start = System.nanoTime();
-            this.device.shaders().prepareMain(frame, colors[0], depth, width, height);
+            extension.prepareMain(frame, colors[0], depth, width, height);
             if (HitchTrace.ENABLED) {
                 HitchTrace.mark("main");
                 HitchTrace.add(HitchTrace.SHADERS, System.nanoTime() - start);
@@ -326,14 +328,14 @@ public class MetalCommandEncoder implements CommandEncoderBackend {
             MetalNative.profileLabel(descriptor.label().get());
         }
         long enc = MetalNative.passBegin(frame, colors, mips, clearMask, clears, depth, depthMip, clearDepth, clearDepthValue, width, height);
-        boolean hand = MetalShaders.enabled() && "Item in hand".equals(descriptor.label().get());
+        boolean hand = extension != null && extension.isHandPass(descriptor);
         this.currentRenderPass = new MetalRenderPass(this.device, this, enc, descriptor.renderArea(), width, height, depthAttachment != null, main, hand);
         if (hand) {
-            this.device.shaders().bindHand(enc, width, height);
+            extension.bindHand(enc, width, height);
         }
         if (main) {
             this.currentRenderPass.setMainTargets(colors[0], depth);
-            this.device.shaders().bindFrame(enc);
+            extension.bindFrame(enc);
         }
         return this.currentRenderPass;
     }
@@ -344,10 +346,16 @@ public class MetalCommandEncoder implements CommandEncoderBackend {
      */
     long splitMainPass(final MetalRenderPass pass, final long color, final long depth, final int width, final int height) {
         pass.endForSplit();
-        this.device.shaders().snapshotOpaque(this.frame());
+        FrameExtension extension = this.device.frameExtension();
+        long frame = this.frame();
+        if (extension != null) {
+            extension.snapshotOpaque(frame);
+        }
         MetalNative.profileLabel("Main (translucent)");
-        long enc = MetalNative.passBegin(this.frame(), new long[]{color}, new int[]{0}, 0, new float[4], depth, 0, false, 0.0, width, height);
-        this.device.shaders().bindFrame(enc);
+        long enc = MetalNative.passBegin(frame, new long[]{color}, new int[]{0}, 0, new float[4], depth, 0, false, 0.0, width, height);
+        if (extension != null) {
+            extension.bindFrame(enc);
+        }
         return enc;
     }
 
@@ -361,7 +369,10 @@ public class MetalCommandEncoder implements CommandEncoderBackend {
         this.currentRenderPass = null;
         if (main) {
             long start = System.nanoTime();
-            this.device.shaders().endMain(this.frame());
+            FrameExtension extension = this.device.frameExtension();
+            if (extension != null) {
+                extension.endMain(this.frame());
+            }
             if (HitchTrace.ENABLED) {
                 HitchTrace.mark("mainEnd");
                 HitchTrace.add(HitchTrace.SHADERS, System.nanoTime() - start);

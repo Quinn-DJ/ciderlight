@@ -50,7 +50,7 @@ public enum RenderScaleSetting {
 
     /**
      * The world's resolution as a fraction of the window's: the -D override, the player's choice, or `auto` (the
-     * quality's own fraction) for Auto. Read every frame by RenderScale.
+     * quality's own fraction) for Auto. Read every frame by the frame extension.
      */
     static float effective(final float auto) {
         if (FORCED != null) {

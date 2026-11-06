@@ -17,6 +17,10 @@ import com.mojang.renderpearl.api.textures.GpuTextureView;
 import com.mojang.renderpearl.backend.api.BackendRenderPipeline;
 import com.mojang.renderpearl.backend.api.GpuDeviceBackend;
 import com.mojang.renderpearl.backend.api.GpuSurfaceBackend;
+import dev.cidercore.api.FrameExtension;
+import dev.cidercore.api.FrameExtensions;
+import dev.cidercore.api.Frames;
+import dev.cidercore.api.MetalDeviceApi;
 import it.unimi.dsi.fastutil.ints.Int2LongOpenHashMap;
 import java.nio.ByteBuffer;
 import java.util.HashMap;
@@ -29,12 +33,12 @@ import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 import org.lwjgl.system.MemoryUtil;
 
-public class MetalDevice implements GpuDeviceBackend {
+public class MetalDevice implements GpuDeviceBackend, MetalDeviceApi {
     private final long context;
     private final DeviceInfo deviceInfo;
     private final MetalCommandEncoder encoder;
-    /** The shader generation the frame renders with; hot apply swaps it (ShaderReload). */
-    private volatile MetalShaders shaders;
+    /** The shader module's frame extension plugged into this device; hot apply swaps the shaders inside it (ShaderReload). */
+    private volatile @Nullable FrameExtension extension;
     private final boolean debugging;
     private final Int2LongOpenHashMap depthStates = new Int2LongOpenHashMap();
     private final Map<TexelViewKey, Long> texelViews = new HashMap<>();
@@ -43,7 +47,7 @@ public class MetalDevice implements GpuDeviceBackend {
     private record TexelViewKey(long buffer, long offset, long length, int format) {
     }
 
-    /** The device the game renders with, for RenderScale; null when the game is not on Ciderlight's backend. */
+    /** The device the game renders with; null when the game is not on Ciderlight's backend. */
     static volatile @Nullable MetalDevice current;
 
     MetalDevice(final long context, final boolean debugging) {
@@ -66,37 +70,45 @@ public class MetalDevice implements GpuDeviceBackend {
             limits[2] != 0 ? DeviceType.INTEGRATED : DeviceType.DISCRETE
         );
         this.encoder = new MetalCommandEncoder(this);
-        Quality quality = Quality.of(name);
-        ShaderSettings settings = new ShaderSettings(
-            ShaderSetting.initialEnabled(),
-            quality == Quality.LOW,
-            ShaderToggle.WAVING.enabled(),
-            ShaderToggle.WATER_REFLECTIONS.enabled(),
-            ShaderToggle.WATER_WAVES.enabled()
-        );
-        ShaderSetting.started(settings);
-        ShaderQuality.started(quality == Quality.LOW);
-        MetalShaders.commitSettings(settings);
-        this.shaders = new MetalShaders(this, quality, settings);
+        this.extension = FrameExtensions.create(this);
+        Frames.setActive(this.extension);
         current = this;
     }
 
-    MetalShaders shaders() {
-        return this.shaders;
+    @Override
+    public String deviceName() {
+        return this.deviceInfo.name();
     }
 
-    /** The settings the shaders in use were built for. */
-    ShaderSettings settings() {
-        return this.shaders.settings();
-    }
-
-    /** Swaps in another shader generation: hot apply does this before rebuilding the pipelines. */
-    void replaceShaders(final MetalShaders shaders) {
-        this.shaders = shaders;
-    }
-
-    long context() {
+    @Override
+    public long context() {
         return this.context;
+    }
+
+    @Override
+    public long createLibrary(final String mslSource) {
+        return MetalNative.libraryCreate(this.context, mslSource);
+    }
+
+    @Override
+    public void releaseAfterSubmit(final Runnable release) {
+        this.encoder.queueForDestroy(release::run);
+    }
+
+    @Override
+    public long currentFrame() {
+        return this.encoder.frame();
+    }
+
+    @Override
+    public @Nullable FrameExtension frameExtension() {
+        return this.extension;
+    }
+
+    @Override
+    public void setFrameExtension(final @Nullable FrameExtension extension) {
+        this.extension = extension;
+        Frames.setActive(extension);
     }
 
     MetalCommandEncoder encoder() {
@@ -114,8 +126,15 @@ public class MetalDevice implements GpuDeviceBackend {
             current = null;
         }
         this.encoder.destroy();
-        this.shaders.destroy();
-        MetalShaders.resetSharedState();
+        FrameExtension extension = this.extension;
+        if (extension != null) {
+            extension.close();
+            // Only clear the global when this device's extension is still the installed one.
+            if (Frames.active() == extension) {
+                Frames.setActive(null);
+            }
+        }
+        this.extension = null;
         this.depthStates.values().forEach(MetalNative::release);
         MetalNative.contextDestroy(this.context);
     }
@@ -183,8 +202,11 @@ public class MetalDevice implements GpuDeviceBackend {
 
     @Override
     public BackendRenderPipeline.Pending compilePipeline(final BackendRenderPipeline.CreateInfo createInfo) {
-        ShaderReload.notePipelineCompiled();
-        MetalRenderPipeline pipeline = MetalRenderPipeline.compile(this, createInfo);
+        FrameExtension extension = this.extension;
+        if (extension != null) {
+            extension.onPipelineCompiled();
+        }
+        MetalRenderPipeline pipeline = MetalRenderPipeline.compile(this, createInfo, extension == null ? null : extension.pipelineTransformer());
         return () -> pipeline;
     }
 
@@ -198,7 +220,8 @@ public class MetalDevice implements GpuDeviceBackend {
         return 0L;
     }
 
-    synchronized long depthState(final int compare, final boolean write) {
+    @Override
+    public synchronized long depthState(final int compare, final boolean write) {
         int key = compare << 1 | (write ? 1 : 0);
         long state = this.depthStates.get(key);
         if (state == 0L) {

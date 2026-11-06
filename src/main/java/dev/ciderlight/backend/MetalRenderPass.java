@@ -9,6 +9,11 @@ import com.mojang.renderpearl.api.pipeline.UniformType;
 import com.mojang.renderpearl.backend.api.BackendRenderPipeline;
 import com.mojang.renderpearl.backend.api.RenderPassBackend;
 import com.mojang.renderpearl.util.TextureViewAndSampler;
+import dev.cidercore.api.FrameExtension;
+import dev.cidercore.api.PipelineFlags;
+import dev.cidercore.api.frame.CloudDraw;
+import dev.cidercore.api.frame.EntityDraw;
+import dev.cidercore.api.frame.TerrainDraw;
 import java.lang.foreign.MemorySegment;
 import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
@@ -30,7 +35,7 @@ public class MetalRenderPass implements RenderPassBackend {
     private final boolean main;
     /** The first-person "Item in hand" pass: item pipelines use their variant with the metal shine. */
     private final boolean hand;
-    /** Set when another pipeline has bound its own resources over the slots MetalShaders.bindFrame fills for terrain. */
+    /** Set when another pipeline has bound its own resources over the slots the frame extension fills for terrain. */
     private boolean frameSlotsTaken;
     private int debugGroups;
     private final long[] vertexBuffers = new long[4];
@@ -90,6 +95,11 @@ public class MetalRenderPass implements RenderPassBackend {
         return this.main;
     }
 
+    /** The shader module's frame extension for this device, or null in core-only mode (every hook is then skipped). */
+    private @Nullable FrameExtension extension() {
+        return this.device.frameExtension();
+    }
+
     void setMainTargets(final long color, final long depth) {
         this.mainColorTexture = color;
         this.mainDepthTexture = depth;
@@ -115,7 +125,10 @@ public class MetalRenderPass implements RenderPassBackend {
 
     void end() {
         if (this.main) {
-            this.device.shaders().finishMain(this.enc);
+            FrameExtension extension = this.extension();
+            if (extension != null) {
+                extension.finishMain(this.enc);
+            }
         }
         MetalNative.passEnd(this.enc);
     }
@@ -270,7 +283,7 @@ public class MetalRenderPass implements RenderPassBackend {
             }
         }
         if (this.bindings.changed()) {
-            if (this.main && p.terrainKind() == MetalShaders.KIND_NONE && count > MetalShaders.FIRST_FRAME_SLOT) {
+            if (this.main && p.terrainKind() == PipelineFlags.KIND_NONE && count > PipelineFlags.FIRST_FRAME_SLOT) {
                 this.frameSlotsTaken = true;
             }
             MetalNative.passBind(this.enc, count, this.bindings.kinds, this.bindings.stages, this.bindings.objects, this.bindings.samplers, this.bindings.offsets);
@@ -285,11 +298,12 @@ public class MetalRenderPass implements RenderPassBackend {
         this.trace("draw verts=" + vertexCount + " inst=" + instanceCount);
         this.flushBindings();
         if (this.pipeline != null) {
-            if (this.skyDrawn && this.pipeline.isSunrise() && MetalShaders.usesAtmosphere()) return;
+            FrameExtension extension = this.extension();
+            if (this.skyDrawn && this.pipeline.isSunrise() && extension != null && extension.usesAtmosphere()) return;
             int[] sky = this.pipeline.skyUniforms();
-            if (sky != null && MetalShaders.usesAtmosphere()) {
+            if (sky != null && extension != null && extension.usesAtmosphere()) {
                 if (this.skyDrawn) return; // skip vanilla's later black underside disc
-                if (this.device.shaders().drawSky(this.enc, this.pipeline.depthState(), this.hasDepth, sky, this.uniforms)) {
+                if (extension.drawSky(this.enc, this.pipeline.depthState(), this.hasDepth, sky, this.uniforms)) {
                     // drawSky writes a different pipeline and buffer bytes directly to this encoder.
                     this.appliedPipeline = null;
                     this.invalidateBindings();
@@ -319,15 +333,21 @@ public class MetalRenderPass implements RenderPassBackend {
         if (this.main && this.pipeline != null && this.pipeline.isLitParticle() && this.frameSlotsTaken) {
             // particle.metal reads the shadow map and frame data from the slots bindFrame fills.
             this.frameSlotsTaken = false;
-            this.device.shaders().bindFrame(this.enc);
+            FrameExtension extension = this.extension();
+            if (extension != null) {
+                extension.bindFrame(this.enc);
+            }
         }
         if (this.pipeline != null && this.pipeline.cloudUniforms() != null) {
             if (this.main) {
                 this.captureClouds(ib, indexCount, firstIndex, vertexOffset);
             }
-            // The cloud shader reads where the sun is from the frame slot (MetalRenderPipeline.sunlitClouds).
+            // The cloud shader reads where the sun is from the frame slot (MetalRenderPass capture -> binder).
             this.frameSlotsTaken = true;
-            this.device.shaders().bindCloudLight(this.enc);
+            FrameExtension extension = this.extension();
+            if (extension != null) {
+                extension.bindCloudLight(this.enc);
+            }
         }
         if (this.pipeline != null && this.pipeline.isFan()) {
             this.drawFan(ib, (long)firstIndex * this.indexSize, indexCount, instanceCount, vertexOffset, firstInstance);
@@ -358,12 +378,15 @@ public class MetalRenderPass implements RenderPassBackend {
         this.trace("drawIndexedIndirect draws=" + drawCount);
         this.flushBindings();
         MetalBuffer ib = this.requireIndexBuffer();
-        if (this.main && this.pipeline != null && this.pipeline.terrainKind() != MetalShaders.KIND_NONE) {
+        if (this.main && this.pipeline != null && this.pipeline.terrainKind() != PipelineFlags.KIND_NONE) {
+            FrameExtension extension = this.extension();
             if (this.frameSlotsTaken) {
                 this.frameSlotsTaken = false;
-                this.device.shaders().bindFrame(this.enc);
+                if (extension != null) {
+                    extension.bindFrame(this.enc);
+                }
             }
-            if (this.pipeline.terrainKind() == MetalShaders.KIND_TRANSLUCENT && !this.split) {
+            if (this.pipeline.terrainKind() == PipelineFlags.KIND_TRANSLUCENT && !this.split) {
                 this.splitForReflections();
                 this.flushBindings();
             }
@@ -413,7 +436,11 @@ public class MetalRenderPass implements RenderPassBackend {
      * shadow passes still get the whole draw (captureTerrain). False when nothing was drawn and the caller must.
      */
     private boolean drawSeenSections(final MetalBuffer ib, final GpuBufferSlice commands, final int drawCount) {
-        it.unimi.dsi.fastutil.longs.LongOpenHashSet casterOnly = MetalShaders.casterOnlySections();
+        FrameExtension extension = this.extension();
+        if (extension == null) {
+            return false; // no shader info: no caster filter
+        }
+        it.unimi.dsi.fastutil.longs.LongOpenHashSet casterOnly = extension.casterOnlySections();
         if (!MAIN_CULL || casterOnly == null || casterOnly.isEmpty() || this.terrainCommands == 0L) {
             return false;
         }
@@ -428,7 +455,9 @@ public class MetalRenderPass implements RenderPassBackend {
                 keep = true;
                 if (instance >= 0 && instance < this.terrainSectionCount) {
                     long pos = this.terrainSections + (long)instance * p.sectionStride() + p.sectionPosOffset();
-                    keep = !casterOnly.contains(MetalShaders.sectionKey(MemoryUtil.memGetInt(pos), MemoryUtil.memGetInt(pos + 4L), MemoryUtil.memGetInt(pos + 8L)));
+                    keep = !casterOnly.contains(
+                        extension.sectionKey(MemoryUtil.memGetInt(pos), MemoryUtil.memGetInt(pos + 4L), MemoryUtil.memGetInt(pos + 8L))
+                    );
                 }
             }
             if (!keep) {
@@ -450,6 +479,10 @@ public class MetalRenderPass implements RenderPassBackend {
 
     private void captureTerrain(final MetalBuffer ib, final GpuBufferSlice commands, final int drawCount) {
         this.terrainCommands = 0L;
+        FrameExtension extension = this.extension();
+        if (extension == null) {
+            return;
+        }
         MetalRenderPipeline p = this.pipeline;
         int[] idx = p.terrainUniforms();
         int[] shadowDesc = p.shadowDescriptor();
@@ -484,7 +517,7 @@ public class MetalRenderPass implements RenderPassBackend {
         this.terrainCommands = commandsAddress;
         this.terrainSections = sectionsAddress;
         this.terrainSectionCount = sectionCount;
-        this.device.shaders().capture(new MetalShaders.TerrainDraw(
+        extension.onTerrainDraw(new TerrainDraw(
             p.terrainKind(), shadowDesc, this.vertexBuffers[0], this.vertexOffsets[0], this.vertexBuffers[1], this.vertexOffsets[1], ib.handle(),
             this.indexType, ((MetalBuffer)commands.buffer()).handle(), commands.offset(), drawCount,
             ((MetalBuffer)globals.buffer()).handle(), globals.offset(),
@@ -496,6 +529,10 @@ public class MetalRenderPass implements RenderPassBackend {
     }
 
     private void captureEntity(final MetalBuffer ib, final int indexCount, final int instanceCount, final int firstIndex, final int vertexOffset, final int firstInstance) {
+        FrameExtension extension = this.extension();
+        if (extension == null) {
+            return;
+        }
         MetalRenderPipeline p = this.pipeline;
         int[] idx = p.entityUniforms();
         int[] shadowDesc = p.shadowDescriptor();
@@ -507,15 +544,19 @@ public class MetalRenderPass implements RenderPassBackend {
         if (transforms == null || atlas == null) {
             return;
         }
-        this.device.shaders().capture(new MetalShaders.EntityDraw(
+        extension.onEntityDraw(new EntityDraw(
             shadowDesc, this.vertexBuffers[0], this.vertexOffsets[0], ib.handle(), this.indexType, indexCount, firstIndex, vertexOffset,
             instanceCount, firstInstance, ((MetalBuffer)transforms.buffer()).handle(), transforms.offset(),
             ((MetalTextureView)atlas.view()).handle(), ((MetalSampler)atlas.sampler()).handle(), p.isLitParticle(),
-            p.isLitParticle() && this.device.shaders().isParticleAtlas(atlas.view().texture()), p.isEmissiveLayer()
+            p.isLitParticle() && extension.isParticleAtlas(atlas.view().texture()), p.isEmissiveLayer()
         ));
     }
 
     private void captureClouds(final MetalBuffer ib, final int indexCount, final int firstIndex, final int vertexOffset) {
+        FrameExtension extension = this.extension();
+        if (extension == null) {
+            return;
+        }
         int[] idx = this.pipeline.cloudUniforms();
         GpuBufferSlice transforms = (GpuBufferSlice)this.uniforms[idx[0]];
         GpuBufferSlice info = (GpuBufferSlice)this.uniforms[idx[1]];
@@ -523,7 +564,7 @@ public class MetalRenderPass implements RenderPassBackend {
         if (transforms == null || info == null || faces == 0L) {
             return;
         }
-        this.device.shaders().capture(new MetalShaders.CloudDraw(
+        extension.onCloudDraw(new CloudDraw(
             ib.handle(), this.indexType, indexCount, firstIndex, vertexOffset, ((MetalBuffer)transforms.buffer()).handle(), transforms.offset(),
             ((MetalBuffer)info.buffer()).handle(), info.offset(), faces
         ));

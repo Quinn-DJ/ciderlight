@@ -3,9 +3,8 @@ package dev.ciderlight.mixin;
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.pipeline.TextureTarget;
 import com.mojang.renderpearl.api.GpuFormat;
-import dev.ciderlight.backend.MetalShaders;
-import dev.ciderlight.backend.RenderScale;
-import dev.ciderlight.backend.ShaderReload;
+import dev.cidercore.api.FrameExtension;
+import dev.cidercore.api.Frames;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.GameRenderer;
 import org.jspecify.annotations.Nullable;
@@ -19,7 +18,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 /**
- * Draws the world at a fraction of the window's resolution (RenderScale), and the HUD and menus at the full one.
+ * Draws the world at a fraction of the window's resolution (the frame extension's world scale), and the HUD and menus at the full one.
  * While the world is drawn, from the level through the hand and post effects, the main target lends out the textures
  * of a smaller one: everything that draws the world (the sky renderer keeps its own reference to the main target, and
  * Ciderlight's passes size themselves by the "Main" pass) then renders smaller without knowing. Afterwards the main
@@ -48,15 +47,17 @@ public class GameRendererMixin {
      */
     @Inject(method = "useImprovedTransparency", at = @At("HEAD"), cancellable = true)
     private void ciderlight$classicTransparency(final CallbackInfoReturnable<Boolean> cir) {
-        if (MetalShaders.enabled()) {
+        FrameExtension extension = Frames.active();
+        if (extension != null && extension.classicTransparency()) {
             cir.setReturnValue(false);
         }
     }
 
     @Inject(method = "resize", at = @At("RETURN"))
     private void ciderlight$resizeWorld(final int width, final int height, final CallbackInfo ci) {
-        if (RenderScale.scale() < 1.0F) {
-            this.ciderlight$sizeWorld(width, height);
+        float scale = ciderlight$worldScale();
+        if (scale < 1.0F) {
+            this.ciderlight$sizeWorld(width, height, scale);
         }
     }
 
@@ -66,7 +67,8 @@ public class GameRendererMixin {
      */
     @Inject(method = "renderLevel", at = @At("HEAD"), cancellable = true)
     private void ciderlight$hideWorldWhileApplying(final CallbackInfo ci) {
-        if (ShaderReload.applying()) {
+        FrameExtension extension = Frames.active();
+        if (extension != null && extension.suppressWorldRender()) {
             ci.cancel();
         }
     }
@@ -76,13 +78,14 @@ public class GameRendererMixin {
         if (this.ciderlight$swapped) {
             this.ciderlight$swap(); // a frame that failed half way left them swapped
         }
-        if (RenderScale.scale() >= 1.0F) {
+        float scale = ciderlight$worldScale();
+        if (scale >= 1.0F) {
             return;
         }
         RenderTarget world = this.ciderlight$world;
-        if (world == null || world.width != RenderScale.scaled(this.mainRenderTarget.width)
-            || world.height != RenderScale.scaled(this.mainRenderTarget.height)) {
-            this.ciderlight$sizeWorld(this.mainRenderTarget.width, this.mainRenderTarget.height);
+        if (world == null || world.width != ciderlight$scaled(this.mainRenderTarget.width, scale)
+            || world.height != ciderlight$scaled(this.mainRenderTarget.height, scale)) {
+            this.ciderlight$sizeWorld(this.mainRenderTarget.width, this.mainRenderTarget.height, scale);
         }
         this.ciderlight$swap();
     }
@@ -93,15 +96,19 @@ public class GameRendererMixin {
             return;
         }
         this.ciderlight$swap();
-        RenderTarget world = this.ciderlight$world;
-        RenderScale.upscale(world.getColorTexture(), this.mainRenderTarget.getColorTexture(), this.mainRenderTarget.width, this.mainRenderTarget.height);
+        FrameExtension extension = Frames.active();
+        if (extension != null) {
+            RenderTarget world = this.ciderlight$world;
+            extension.upscale(world.getColorTexture(), this.mainRenderTarget.getColorTexture(), this.mainRenderTarget.width,
+                this.mainRenderTarget.height);
+        }
     }
 
     /** Sizes the smaller target, and the others drawn alongside the world (the hand's depth, the entity outline). */
     @Unique
-    private void ciderlight$sizeWorld(final int width, final int height) {
-        int w = RenderScale.scaled(width);
-        int h = RenderScale.scaled(height);
+    private void ciderlight$sizeWorld(final int width, final int height, final float scale) {
+        int w = ciderlight$scaled(width, scale);
+        int h = ciderlight$scaled(height, scale);
         if (this.ciderlight$world == null) {
             this.ciderlight$world = new TextureTarget("Main (world)", w, h, GpuFormat.RGBA8_UNORM, GpuFormat.D32_FLOAT);
         } else {
@@ -136,5 +143,17 @@ public class GameRendererMixin {
         world.width = width;
         world.height = height;
         this.ciderlight$swapped = !this.ciderlight$swapped;
+    }
+
+    /** The world's resolution fraction: 1 without a frame extension (the game is not on Ciderlight's backend). */
+    @Unique
+    private static float ciderlight$worldScale() {
+        FrameExtension extension = Frames.active();
+        return extension == null ? 1.0F : extension.worldScale();
+    }
+
+    @Unique
+    private static int ciderlight$scaled(final int size, final float scale) {
+        return Math.max(1, Math.round(size * scale));
     }
 }

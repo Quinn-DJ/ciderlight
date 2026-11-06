@@ -8,6 +8,7 @@ import com.mojang.renderpearl.api.pipeline.BindGroupLayout;
 import com.mojang.renderpearl.api.pipeline.BlendFactor;
 import com.mojang.renderpearl.api.pipeline.BlendOp;
 import com.mojang.renderpearl.api.pipeline.CompareOp;
+import dev.cidercore.api.MetalDeviceApi;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
@@ -147,7 +148,7 @@ public final class MetalShaders implements Destroyable {
     private static final int FRAME_CONSTANTS_INDEX = 7;
     /** The lowest texture slot bindFrame fills; a pipeline with more uniforms than this binds over it. */
     static final int FIRST_FRAME_SLOT = 6;
-    /** Items whose sprites shine when held in first person (MetalRenderPipeline.handShine). */
+    /** Items whose sprites shine when held in first person (CiderlightPipelineTransformer.handShine). */
     private static final String[] METAL_MATERIALS = {"iron", "golden", "diamond", "netherite", "copper", "chainmail"};
     private static final String[] METAL_SHAPES = {
         "sword", "pickaxe", "axe", "shovel", "hoe", "spear", "helmet", "chestplate", "leggings", "boots", "horse_armor", "nautilus_armor"
@@ -266,7 +267,7 @@ public final class MetalShaders implements Destroyable {
     /** Changes whenever the light has moved far enough for the set of shadow casters to need another look. */
     private static volatile int casterLightStamp;
 
-    private final MetalDevice device;
+    private final MetalDeviceApi device;
     private final Quality quality;
     /** The settings this generation of shaders and pipelines was built for (ShaderSettings). */
     private final ShaderSettings settings;
@@ -478,7 +479,7 @@ public final class MetalShaders implements Destroyable {
     ) {
     }
 
-    MetalShaders(final MetalDevice device, final Quality quality, final ShaderSettings settings) {
+    MetalShaders(final MetalDeviceApi device, final Quality quality, final ShaderSettings settings) {
         this.device = device;
         this.quality = quality;
         this.settings = settings;
@@ -1144,7 +1145,7 @@ public final class MetalShaders implements Destroyable {
             if (this.opaqueColor != 0L) {
                 long color = this.opaqueColor;
                 long depth = this.opaqueDepth;
-                this.device.encoder().queueForDestroy(() -> {
+                this.device.releaseAfterSubmit(() -> {
                     MetalNative.release(color);
                     MetalNative.release(depth);
                 });
@@ -1562,14 +1563,14 @@ public final class MetalShaders implements Destroyable {
         MetalNative.setLabel(buffer, "Ciderlight held item sprite map");
         long old = this.handSpriteBuffer;
         if (old != 0L) {
-            this.device.encoder().queueForDestroy(() -> MetalNative.release(old));
+            this.device.releaseAfterSubmit(() -> MetalNative.release(old));
         }
         this.handSpriteBuffer = buffer;
         this.handSpriteBytes = bytes;
     }
 
     /**
-     * The light the cloud vertex shader shades its faces with (MetalRenderPipeline.sunlitClouds): the sun's direction
+     * The light the cloud vertex shader shades its faces with (CiderlightPipelineTransformer.sunlitClouds): the sun's direction
      * and strength, and at golden hour a warm tint for the faces turned to it and a cool one for those turned away,
      * both taken from the surface light with their brightness evened out to 1 and softened.
      */
@@ -1634,7 +1635,7 @@ public final class MetalShaders implements Destroyable {
         MetalNative.setLabel(buffer, "Ciderlight sprite map");
         long old = this.foliageBuffer;
         if (old != 0L) {
-            this.device.encoder().queueForDestroy(() -> MetalNative.release(old));
+            this.device.releaseAfterSubmit(() -> MetalNative.release(old));
         }
         this.foliageBuffer = buffer;
         this.foliageBytes = bytes;
@@ -1772,7 +1773,7 @@ public final class MetalShaders implements Destroyable {
         MetalNative.setLabel(buffer, "Ciderlight emissive map");
         long old = this.emissiveBuffer;
         if (old != 0L) {
-            this.device.encoder().queueForDestroy(() -> MetalNative.release(old));
+            this.device.releaseAfterSubmit(() -> MetalNative.release(old));
         }
         this.emissiveBuffer = buffer;
         this.emissiveBytes = bytes;
@@ -1878,7 +1879,7 @@ public final class MetalShaders implements Destroyable {
             long old = this.shadowHistoryTextures[i];
             long oldTranslucent = this.translucentShadowHistoryTextures[i];
             if (old != 0L) {
-                this.device.encoder().queueForDestroy(() -> {
+                this.device.releaseAfterSubmit(() -> {
                     MetalNative.release(old);
                     MetalNative.release(oldTranslucent);
                 });
@@ -1939,7 +1940,7 @@ public final class MetalShaders implements Destroyable {
                 if (this.volumetricTextures[i] != 0L) {
                     long old = this.volumetricTextures[i];
                     long oldExtinction = this.extinctionTextures[i];
-                    this.device.encoder().queueForDestroy(() -> { MetalNative.release(old); MetalNative.release(oldExtinction); });
+                    this.device.releaseAfterSubmit(() -> { MetalNative.release(old); MetalNative.release(oldExtinction); });
                 }
                 this.volumetricTextures[i] = MetalNative.textureCreate(this.device.context(), VOLUMETRIC_FORMAT, width, height, 1, 1, 4 | 8);
                 this.extinctionTextures[i] = MetalNative.textureCreate(this.device.context(), EXTINCTION_FORMAT, width, height, 1, 1, 4 | 8);
@@ -2005,14 +2006,14 @@ public final class MetalShaders implements Destroyable {
         for (int i = 0; i < 2; i++) {
             long old = this.aoTextures[i];
             if (old != 0L) {
-                this.device.encoder().queueForDestroy(() -> MetalNative.release(old));
+                this.device.releaseAfterSubmit(() -> MetalNative.release(old));
             }
             this.aoTextures[i] = MetalNative.textureCreate(this.device.context(), AO_FORMAT, width, height, 1, 1, 4 | 8);
             MetalNative.setLabel(this.aoTextures[i], "Ciderlight ambient occlusion " + i);
         }
         long oldRaw = this.aoRawTexture;
         if (oldRaw != 0L) {
-            this.device.encoder().queueForDestroy(() -> MetalNative.release(oldRaw));
+            this.device.releaseAfterSubmit(() -> MetalNative.release(oldRaw));
         }
         this.aoRawTexture = MetalNative.textureCreate(this.device.context(), AO_FORMAT, width, height, 1, 1, 4 | 8);
         MetalNative.setLabel(this.aoRawTexture, "Ciderlight ambient occlusion (raw)");
@@ -2327,7 +2328,7 @@ public final class MetalShaders implements Destroyable {
             for (int pair = 0; pair < 2; pair++) {
                 long depth = this.farShadowTextures[pair];
                 long color = this.farShadowColorTextures[pair];
-                this.device.encoder().queueForDestroy(() -> {
+                this.device.releaseAfterSubmit(() -> {
                     MetalNative.release(depth);
                     MetalNative.release(color);
                 });

@@ -10,6 +10,7 @@ import net.minecraft.server.packs.resources.PreparableReloadListener;
 import net.minecraft.util.Util;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
+import dev.cidercore.api.FrameExtension;
 
 /**
  * Applies ShaderSetting and the compiled ShaderToggle effects without restarting the game: the settings page stages a
@@ -96,7 +97,12 @@ public final class ShaderReload {
             failure.accept(new IllegalStateException("Ciderlight is not the active renderer"));
             return;
         }
-        Quality quality = resolveQuality(device.shaders().quality());
+        CiderlightFrameExtension extension = activeExtension(device);
+        if (extension == null) {
+            failure.accept(new IllegalStateException("Ciderlight's shader module is not installed"));
+            return;
+        }
+        Quality quality = resolveQuality(extension.quality());
         ShaderSettings target = new ShaderSettings(
             ShaderSetting.current() == ShaderSetting.ON,
             quality == Quality.LOW,
@@ -104,7 +110,7 @@ public final class ShaderReload {
             ShaderToggle.WATER_REFLECTIONS.current(),
             ShaderToggle.WATER_WAVES.current()
         );
-        ShaderSettings current = device.settings();
+        ShaderSettings current = extension.settings();
         if (!current.needsPipelineReload(target)) {
             // Nothing reaches a compiled shader source (a choice while the shaders are off, or one made moot by a -D
             // override): commit it and save the config without rebuilding anything.
@@ -120,7 +126,7 @@ public final class ShaderReload {
         compiled = 0;
         total = RenderPipelines.requiredPipelines().size() + RenderPipelines.optionalPipelines().size();
         slowWarned = false;
-        previousShaders = device.shaders();
+        previousShaders = extension.shaders();
         previousSettings = previousShaders.settings();
         onSuccess = success;
         onFailure = failure;
@@ -133,7 +139,7 @@ public final class ShaderReload {
             finishFailure(device, e);
             return;
         }
-        device.replaceShaders(next);
+        extension.replaceShaders(next);
         MetalShaders.commitSettings(target);
         reload(game()).whenComplete((ignored, throwable) -> game().execute(() -> {
             if (throwable == null) {
@@ -216,7 +222,7 @@ public final class ShaderReload {
         ShaderQuality.commit();
         ShaderToggle.commitAll();
         if (previous != null) {
-            device.encoder().queueForDestroy(previous);
+            device.releaseAfterSubmit(previous::destroy);
         }
         long elapsed = Util.getMillis() - startedAt;
         applying = false;
@@ -231,13 +237,19 @@ public final class ShaderReload {
         }
     }
 
+    /** The shader module's extension for this device, or null when the device runs core-only. */
+    private static @Nullable CiderlightFrameExtension activeExtension(final MetalDevice device) {
+        return device.frameExtension() instanceof CiderlightFrameExtension extension ? extension : null;
+    }
+
     private static void finishFailure(final MetalDevice device, final Throwable throwable) {
-        MetalShaders failed = device.shaders();
-        if (previousShaders != null && failed != previousShaders) {
+        CiderlightFrameExtension extension = activeExtension(device);
+        MetalShaders failed = extension == null ? null : extension.shaders();
+        if (extension != null && previousShaders != null && failed != previousShaders) {
             // The new generation was already committed (the reload started); put the old one back and release it later.
-            device.replaceShaders(previousShaders);
+            extension.replaceShaders(previousShaders);
             MetalShaders.commitSettings(previousSettings != null ? previousSettings : previousShaders.settings());
-            device.encoder().queueForDestroy(failed);
+            device.releaseAfterSubmit(failed::destroy);
         }
         long elapsed = Util.getMillis() - startedAt;
         applying = false;
