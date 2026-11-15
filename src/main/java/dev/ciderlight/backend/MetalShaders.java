@@ -184,6 +184,8 @@ public final class MetalShaders implements Destroyable {
     /** Light thrown by explosions (FrameData.burstLights): xyz relative to the camera, w intensity. */
     private static final int BURST_LIGHT_OFFSET = LIGHT_SHADOW_OFFSET + 16;
     private static final int BURST_LIGHTS = 8; // BURST_LIGHTS in frame.metal
+    /** World render scale; composite (the final pass when there is no upscale) dithers only at 1.0. */
+    private static final int FINAL_PARAMS_OFFSET = BURST_LIGHT_OFFSET + BURST_LIGHTS * 16;
     private static final int RAIN_GRID = 64;
     private static final int RAIN_CELL = 4;
     private static final int LIGHTNING_SHADOW_INDEX = 6;
@@ -2772,6 +2774,7 @@ public final class MetalShaders implements Destroyable {
             seg.set(ValueLayout.JAVA_FLOAT, LIGHT_TUNING_OFFSET + 8, LightSetting.EXPOSURE.scale());
             seg.set(ValueLayout.JAVA_FLOAT, LIGHT_TUNING_OFFSET + 12, LightSetting.SATURATION.scale());
             seg.set(ValueLayout.JAVA_FLOAT, LIGHT_SHADOW_OFFSET, LightSetting.SHADOW_DARKNESS.scale());
+            seg.set(ValueLayout.JAVA_FLOAT, FINAL_PARAMS_OFFSET, this.renderScale());
         }
         // cameraPos.w: the cloud base above the camera; with no clouds in the map nothing is under them.
         this.sampleFrame.set(ValueLayout.JAVA_FLOAT, 348, Double.isNaN(this.cloudBase) ? -1.0e9F : (float)(this.cloudBase - cameraPos.y));

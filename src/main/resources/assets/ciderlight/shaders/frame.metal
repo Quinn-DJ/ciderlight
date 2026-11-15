@@ -28,7 +28,8 @@ struct FrameData {
     float4 lightTuning;   // x ambient light scale, y torch light scale, z exposure, w saturation (1 = the tuned look)
     float4 lightShadow;   // x shadow darkness scale (how much of the sunlight a shadow takes away)
     float4 burstLights[8]; // light thrown by explosions: xyz relative to the camera, w intensity 0-1; the list ends at the first 0
-    float4 reserved[12];  // unused; keeps the offsets of the fields below
+    float4 finalParams;   // x: world render scale (1 when no upscale pass); y/z/w: reserved
+    float4 reserved[11];  // unused; keeps the offsets of the fields below
     float4 waterParams;   // x underwater, y local surface relative to camera, z surface sky light, w extinction scale
     float4x4 farShadowMat;
     float4 farCamToAnchor; // xyz camera minus far-map anchor, w valid

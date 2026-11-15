@@ -504,6 +504,11 @@ fragment float4 composite_fragment(VOut in [[stage_in]],
     // Soft vignette.
     float2 v = in.uv - 0.5;
     color *= 1.0 - dot(v, v) * 0.18;
+    // At render scale 1 there is no upscale pass, so this composite is the final RGBA8 write: dither the night-sky
+    // banding here. With an upscale, that pass dithers instead (doing both would double the noise).
+    if (frame.finalParams.x >= 0.999) {
+        color += (gradient_noise(in.position.xy) - 0.5) / 255.0;
+    }
     return float4(color, 1.0);
 }
 
