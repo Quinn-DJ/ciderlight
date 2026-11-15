@@ -701,5 +701,10 @@ fragment float4 upscale_fragment(VOut in [[stage_in]], texture2d<float> source [
     float3 hi = max(c, max(max(n, s), max(w, e)));
     float3 amount = sqrt(saturate(min(lo, 1.0 - hi) / max(hi, 1e-4)));
     float3 weight = -amount / mix(8.0, 5.0, UPSCALE_SHARPNESS);
-    return float4(saturate((c + (n + s + w + e) * weight) / (1.0 + 4.0 * weight)), 1.0);
+    float3 upscaled = saturate((c + (n + s + w + e) * weight) / (1.0 + 4.0 * weight));
+    // The sky is stored in an RGBA8 target at render scale, so its dark night gradient is already quantized before
+    // this full-resolution upscale. A full-resolution half-step dither hides the resulting ring/band edges without
+    // turning the low-resolution grid into a visible pattern.
+    upscaled += (gradient_noise(in.position.xy) - 0.5) / 255.0;
+    return float4(upscaled, 1.0);
 }
