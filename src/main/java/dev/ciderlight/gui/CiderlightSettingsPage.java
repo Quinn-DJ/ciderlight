@@ -12,10 +12,9 @@ import org.jspecify.annotations.Nullable;
  * and opens this page, exactly where Ciderlight's own VideoSettingsScreenMixin used to.
  */
 public final class CiderlightSettingsPage implements SettingsPage {
-	private static final Component TITLE = Component.literal("Ciderlight Settings");
-	private static final Component BUTTON = Component.literal("Ciderlight...");
-	private static final Component TOOLTIP = Component.literal(
-		"Shaders, shadows, waving plants, water reflections, ambient occlusion and the world's render scale.");
+	private static final Component TITLE = Component.translatable("ciderlight.settings.title");
+	private static final Component BUTTON = Component.translatable("ciderlight.settings.button");
+	private static final Component TOOLTIP = Component.translatable("ciderlight.settings.button.tooltip");
 
 	@Override
 	public Component title() {

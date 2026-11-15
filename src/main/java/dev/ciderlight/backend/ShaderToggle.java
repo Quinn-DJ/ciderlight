@@ -11,20 +11,18 @@ import org.jspecify.annotations.Nullable;
  * still overrides the saved value.
  */
 public enum ShaderToggle {
-    SHADOWS("shadows", "Shadows", true,
-        "The sun and moon cast shadows, and light shafts form in the haze. Off skips the shadow maps, the biggest single "
-            + "cost on the GPU, and lights everything as if it stood in the open."),
-    WAVING("waving", "Waving Plants", false, "Leaves, grass, flowers and crops sway in the wind."),
-    WATER_REFLECTIONS("waterReflections", "Water Reflections", false,
-        "Water mirrors the hills, trees and buildings around it. Off: water reflects the sky only, which costs less."),
-    WATER_WAVES("waterWaves", "Water Waves", false,
-        "Waves roll across lakes and the sea and run down waterfalls. Off: the water lies calm (rain still ripples it)."),
-    AMBIENT_OCCLUSION("ao", "Ambient Occlusion", true, "Soft shade in corners, under ledges and between blocks.");
+    SHADOWS("shadows", "ciderlight.option.shadows", true, "ciderlight.tooltip.shadows"),
+    WAVING("waving", "ciderlight.option.waving", false, "ciderlight.tooltip.waving"),
+    WATER_REFLECTIONS("waterReflections", "ciderlight.option.water_reflections", false, "ciderlight.tooltip.water_reflections"),
+    WATER_WAVES("waterWaves", "ciderlight.option.water_waves", false, "ciderlight.tooltip.water_waves"),
+    AMBIENT_OCCLUSION("ao", "ciderlight.option.ao", true, "ciderlight.tooltip.ao");
 
     /** The property key, both in ciderlight.properties and as -Dciderlight.KEY. */
     public final String key;
-    public final String label;
-    public final String description;
+    /** Translation key of the option's label. */
+    public final String labelKey;
+    /** Translation key of the option's tooltip. */
+    public final String descriptionKey;
     /** Applies as soon as it is chosen, not through the Apply button. */
     public final boolean live;
     /** What this session runs with. */
@@ -34,11 +32,11 @@ public enum ShaderToggle {
     /** Staged on the settings page: the Apply button commits it (hot apply only). */
     private volatile @Nullable Boolean chosen;
 
-    ShaderToggle(final String key, final String label, final boolean live, final String description) {
+    ShaderToggle(final String key, final String labelKey, final boolean live, final String descriptionKey) {
         this.key = key;
-        this.label = label;
+        this.labelKey = labelKey;
         this.live = live;
-        this.description = description;
+        this.descriptionKey = descriptionKey;
         String override = System.getProperty("ciderlight." + key);
         this.forced = override != null;
         this.running = !"false".equals(override != null ? override : CiderlightConfig.saved(key));

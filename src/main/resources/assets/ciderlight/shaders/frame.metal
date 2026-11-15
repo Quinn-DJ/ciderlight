@@ -25,7 +25,10 @@ struct FrameData {
     float4 heldLights[8]; // light sources in players' hands, nearest first: xyz relative to the camera, w block-light level (0-1); the list ends at the first 0
     float4 surfaceSun;     // rgb direct sun (or moon) light on surfaces, before shadows and the light's strength
     float4 surfaceAmbient; // rgb sky light on surfaces in shade (blue by day), before sky-light falloff
-    float4 reserved[22];  // unused; keeps the offsets of the fields below
+    float4 lightTuning;   // x ambient light scale, y torch light scale, z exposure, w saturation (1 = the tuned look)
+    float4 lightShadow;   // x shadow darkness scale (how much of the sunlight a shadow takes away)
+    float4 burstLights[8]; // light thrown by explosions: xyz relative to the camera, w intensity 0-1; the list ends at the first 0
+    float4 reserved[12];  // unused; keeps the offsets of the fields below
     float4 waterParams;   // x underwater, y local surface relative to camera, z surface sky light, w extinction scale
     float4x4 farShadowMat;
     float4 farCamToAnchor; // xyz camera minus far-map anchor, w valid
@@ -68,6 +71,11 @@ constant float ENTITY_EMISSIVE_ALPHA = 0.975;
 // Glowing eyes (endermen, spiders, phantoms): unshaded like flames, but kept at their own colour, not brightened.
 // Two 8-bit steps above the flames' mark (the scene's alpha is 8 bits).
 constant float ENTITY_GLOW_ALPHA = 0.985;
+// The white flash of a primed TNT (and a swelling creeper): the entity/item shader still multiplies it with the night
+// lightmap, so the composite restores it to white. One further 8-bit step above the glow mark.
+constant float ENTITY_FLASH_ALPHA = 0.992;
+// The flash is white, but not a lamp: pure white in a dark room reads as an overexposed block.
+constant float ENTITY_FLASH_BRIGHTNESS = 0.85;
 
 // Strength of torch/block light at a vanilla block-light level (0-1): a warm falloff with a hot core next to the
 // source. Shared by terrain and the entity composite so mobs are lit like the ground around them.
@@ -106,6 +114,21 @@ static float3 lightning_sky_light(constant FrameData &frame) {
     return float3(0.70, 0.78, 1.0) * (frame.lightning.w * 0.12);
 }
 
+// An explosion lights the ground and walls around it for a moment. The light is queued from the client's explosion
+// packet (ExplosionLights), so it also appears after the entity is gone; these are short-lived, shadowless bursts.
+constant int BURST_LIGHTS = 8;
+static float3 burst_light(constant FrameData &frame, float3 worldPos, float3 normal) {
+    float3 light = float3(0.0);
+    for (int i = 0; i < BURST_LIGHTS && frame.burstLights[i].w > 0.0; i++) {
+        float3 toLight = frame.burstLights[i].xyz - worldPos;
+        float dist2 = dot(toLight, toLight);
+        float facing = mix(0.25, 1.0, saturate(dot(normal, toLight) / max(sqrt(dist2), 1e-3) * 0.5 + 0.5));
+        // An explosion throws light much further than a torch: half as bright about twelve blocks away.
+        light += float3(1.0, 0.84, 0.62) * (frame.burstLights[i].w * facing / (1.0 + dist2 / 144.0));
+    }
+    return min(light, float3(2.0));
+}
+
 // How much rain falls on the column at world `xz` (absolute): 1 in biomes that get rain, 0 in dry and snowy ones
 // (deserts, savannas, the badlands, the cold biomes). Blended between neighbouring 4x4 cells, so biome borders fade.
 constant int RAIN_GRID = 64;
@@ -132,6 +155,11 @@ static float decode_entity_light(float alpha) {
 
 static bool entity_emissive(float alpha) {
     return alpha > 0.9625 && alpha < 0.995;
+}
+
+// The white flash, told apart from glowing eyes and the red hurt overlay by its mark (entity.metal writes it).
+static bool entity_flash(float alpha) {
+    return alpha > 0.988 && alpha < 0.995;
 }
 
 // A flame (ENTITY_EMISSIVE_ALPHA) rather than glowing eyes (ENTITY_GLOW_ALPHA); both are entity_emissive.

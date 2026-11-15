@@ -6,6 +6,7 @@ import dev.ciderlight.debug.ResourceReloadTest;
 import dev.cidercore.api.CidercoreApi;
 import dev.cidercore.api.CidercoreContext;
 import dev.cidercore.api.CidercoreModule;
+import dev.cidercore.api.Translations;
 import net.minecraft.client.Minecraft;
 import org.slf4j.Logger;
 
@@ -28,6 +29,10 @@ public final class CiderlightModule implements CidercoreModule {
 
 	@Override
 	public void initialise(final CidercoreContext context) {
+		// i18n: hand the core our lang files so it can merge them into the game's language (no Fabric API needed).
+		if (CidercoreApi.supports(CidercoreApi.CAPABILITY_TRANSLATIONS)) {
+			Translations.register(id(), CiderlightModule.class);
+		}
 		if (context.apiVersion() != CidercoreApi.API_VERSION) {
 			LOGGER.warn("Ciderlight: core API version {} does not match the compiled-against version {}; disabling the shader module",
 				context.apiVersion(), CidercoreApi.API_VERSION);

@@ -1,6 +1,7 @@
 package dev.ciderlight.gui;
 
 import com.mojang.serialization.Codec;
+import dev.ciderlight.backend.LightSetting;
 import dev.ciderlight.backend.RenderScaleSetting;
 import dev.ciderlight.backend.ShaderQuality;
 import dev.ciderlight.backend.ShaderReload;
@@ -22,6 +23,7 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.options.OptionsSubScreen;
 import net.minecraft.network.chat.CommonComponents;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.MutableComponent;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -40,19 +42,12 @@ import org.jspecify.annotations.Nullable;
  * the override wins.
  */
 public class CiderlightSettingsScreen extends OptionsSubScreen {
-    private static final Component TITLE = Component.literal("Ciderlight Settings");
-    private static final Component RESTART = Component.literal("Applies after restarting the game").withStyle(ChatFormatting.RED);
-    private static final Component APPLY = Component.literal("Click Apply to use this setting").withStyle(ChatFormatting.YELLOW);
-    private static final Component SHADERS_TOOLTIP = Component.literal(
-        "Ciderlight's shadows, light shafts, water, sky and waving plants. Off keeps the Metal renderer with Minecraft's "
-            + "own look.");
-    private static final Component QUALITY_TOOLTIP = Component.literal(
-        "How much the shaders cost on the GPU. Low has smaller shadow maps, coarser fog, lighter water reflections and draws "
-            + "the world at two thirds of the window's resolution; it is what A-series chips and the plain M1 to M4 start on. "
-            + "High is what everything else starts on. The quality is kept while the shaders are off.");
-    private static final Component RENDER_SCALE_TOOLTIP = Component.literal(
-        "The world's resolution as a share of the window's; the HUD and menus stay sharp. Lower is faster. "
-            + "Auto: two thirds on Low, full on High. Applies immediately.");
+    private static final Component TITLE = Component.translatable("ciderlight.settings.title");
+    private static final Component RESTART = Component.translatable("ciderlight.note.restart").withStyle(ChatFormatting.RED);
+    private static final Component APPLY = Component.translatable("ciderlight.note.apply").withStyle(ChatFormatting.YELLOW);
+    private static final Component SHADERS_TOOLTIP = Component.translatable("ciderlight.tooltip.shaders");
+    private static final Component QUALITY_TOOLTIP = Component.translatable("ciderlight.tooltip.quality");
+    private static final Component RENDER_SCALE_TOOLTIP = Component.translatable("ciderlight.tooltip.render_scale");
 
     /** The options that only mean something with shaders on: greyed out while Shaders is Off. */
     private final List<OptionInstance<?>> effects = new ArrayList<>();
@@ -76,9 +71,9 @@ public class CiderlightSettingsScreen extends OptionsSubScreen {
         this.list.addBig(this.status);
 
         OptionInstance<ShaderSetting> shaders = new OptionInstance<>(
-            "Shaders",
+            "ciderlight.option.shaders",
             value -> tooltip(SHADERS_TOOLTIP, shadersNote(value)),
-            (caption, value) -> Component.literal(value.label),
+            (caption, value) -> Component.translatable(value.labelKey),
             new OptionInstance.Enum<>(List.of(ShaderSetting.values()), Codec.STRING.xmap(ShaderSetting::valueOf, ShaderSetting::name)),
             ShaderSetting.current(),
             value -> {
@@ -92,9 +87,9 @@ public class CiderlightSettingsScreen extends OptionsSubScreen {
         this.list.addBig(shaders);
 
         OptionInstance<ShaderQuality> quality = new OptionInstance<>(
-            "Shaders Quality",
+            "ciderlight.option.quality",
             value -> tooltip(QUALITY_TOOLTIP, qualityNote(value)),
-            (caption, value) -> Component.literal(value.label),
+            (caption, value) -> Component.translatable(value.labelKey),
             new OptionInstance.Enum<>(List.of(ShaderQuality.values()), Codec.STRING.xmap(ShaderQuality::valueOf, ShaderQuality::name)),
             ShaderQuality.current(),
             value -> {
@@ -108,9 +103,9 @@ public class CiderlightSettingsScreen extends OptionsSubScreen {
         this.effects.clear();
         this.forced.clear();
         for (ShaderToggle toggle : ShaderToggle.values()) {
-            Component description = Component.literal(toggle.description);
+            Component description = Component.translatable(toggle.descriptionKey);
             OptionInstance<Boolean> option = OptionInstance.createBoolean(
-                toggle.label, value -> tooltip(description, toggleNote(toggle, value)), toggle.current(), value -> {
+                toggle.labelKey, value -> tooltip(description, toggleNote(toggle, value)), toggle.current(), value -> {
                     this.lastApplyFailed = false;
                     toggle.choose(value);
                     this.refreshStatus();
@@ -122,9 +117,9 @@ public class CiderlightSettingsScreen extends OptionsSubScreen {
             }
         }
         OptionInstance<RenderScaleSetting> renderScale = new OptionInstance<>(
-            "Render Scale",
+            "ciderlight.option.render_scale",
             value -> tooltip(RENDER_SCALE_TOOLTIP, RenderScaleSetting.forced() ? forcedNote("renderScale") : null),
-            (caption, value) -> Component.literal(value.label),
+            (caption, value) -> Component.translatable(value.labelKey),
             new OptionInstance.Enum<>(List.of(RenderScaleSetting.values()), Codec.STRING.xmap(RenderScaleSetting::valueOf, RenderScaleSetting::name)),
             RenderScaleSetting.current(),
             RenderScaleSetting::choose
@@ -134,6 +129,32 @@ public class CiderlightSettingsScreen extends OptionsSubScreen {
             this.forced.add(renderScale);
         }
         this.list.addSmall(this.effects.toArray(new OptionInstance<?>[0]));
+
+        // The lighting sliders are live: MetalShaders reads the current value every frame, so they apply without the
+        // Apply button and are saved to ciderlight.properties immediately.
+        this.list.addHeader(Component.translatable("ciderlight.section.lighting"));
+        List<OptionInstance<?>> lighting = new ArrayList<>();
+        for (LightSetting setting : LightSetting.values()) {
+            OptionInstance<Integer> slider = new OptionInstance<>(
+                setting.labelKey,
+                value -> tooltip(Component.translatable(setting.descriptionKey), setting.forced() ? forcedNote(setting.key) : null),
+                (caption, value) -> Component.translatable("ciderlight.option.slider_value", caption, value),
+                new OptionInstance.IntRange(setting.min, setting.max, true),
+                setting.current(),
+                value -> {
+                    this.lastApplyFailed = false;
+                    setting.choose(value);
+                    this.refreshStatus();
+                }
+            );
+            lighting.add(slider);
+            this.effects.add(slider);
+            if (setting.forced()) {
+                this.forced.add(slider);
+            }
+        }
+        this.list.addSmall(lighting.toArray(new OptionInstance<?>[0]));
+
         this.updateEffects();
         this.refreshStatus();
     }
@@ -144,7 +165,7 @@ public class CiderlightSettingsScreen extends OptionsSubScreen {
             super.addFooter();
             return;
         }
-        this.applyButton = Button.builder(Component.literal("Apply"), button -> this.apply(null)).width(100).build();
+        this.applyButton = Button.builder(Component.translatable("ciderlight.button.apply"), button -> this.apply(null)).width(100).build();
         this.doneButton = Button.builder(CommonComponents.GUI_DONE, button -> this.onClose()).width(100).build();
         LinearLayout row = LinearLayout.horizontal().spacing(8);
         row.addChild(this.applyButton);
@@ -226,7 +247,8 @@ public class CiderlightSettingsScreen extends OptionsSubScreen {
         boolean applying = ShaderReload.applying();
         if (this.applyButton != null) {
             this.applyButton.active = ShaderReload.HOT_ENABLED && !applying && ShaderReload.pendingChanges();
-            this.applyButton.setMessage(applying ? Component.literal("Applying…") : Component.literal("Apply"));
+            this.applyButton.setMessage(applying ? Component.translatable("ciderlight.button.applying")
+                : Component.translatable("ciderlight.button.apply"));
         }
         if (this.doneButton != null) {
             this.doneButton.active = !applying;
@@ -239,27 +261,31 @@ public class CiderlightSettingsScreen extends OptionsSubScreen {
 
     private Component statusMessage() {
         if (ShaderReload.applying()) {
-            int compiled = ShaderReload.compiled();
+            int compiled = Math.min(ShaderReload.compiled(), ShaderReload.total());
             int total = ShaderReload.total();
-            String progress = total > 0 ? "Applying Ciderlight settings… (" + Math.min(compiled, total) + "/" + total + ")" : "Applying Ciderlight settings…";
-            if (ShaderReload.slow()) {
-                progress += " still working, the shader compiler is taking longer than usual";
+            MutableComponent progress;
+            if (total <= 0) {
+                progress = Component.translatable("ciderlight.status.applying.generic");
+            } else if (ShaderReload.slow()) {
+                progress = Component.translatable("ciderlight.status.applying.slow", compiled, total);
+            } else {
+                progress = Component.translatable("ciderlight.status.applying", compiled, total);
             }
-            return Component.literal(progress).withStyle(ChatFormatting.WHITE);
+            return progress.withStyle(ChatFormatting.WHITE);
         }
         if (this.lastApplyFailed) {
-            return Component.literal("Applying failed; the previous shaders are still in use (see latest.log)").withStyle(ChatFormatting.RED);
+            return Component.translatable("ciderlight.status.failed").withStyle(ChatFormatting.RED);
         }
         if (ShaderReload.HOT_ENABLED) {
             if (ShaderReload.pendingChanges()) {
-                return Component.literal("Changes are staged; click Apply to use them").withStyle(ChatFormatting.YELLOW);
+                return Component.translatable("ciderlight.status.staged").withStyle(ChatFormatting.YELLOW);
             }
-            return Component.literal("Settings are applied").withStyle(ChatFormatting.GREEN);
+            return Component.translatable("ciderlight.status.applied").withStyle(ChatFormatting.GREEN);
         }
         if (ShaderSetting.restartRequired() || ShaderToggle.anyRestartRequired()) {
-            return Component.literal("Changes apply after restarting the game").withStyle(ChatFormatting.RED);
+            return Component.translatable("ciderlight.status.restart").withStyle(ChatFormatting.RED);
         }
-        return Component.literal("Settings match what is running").withStyle(ChatFormatting.GREEN);
+        return Component.translatable("ciderlight.status.matching").withStyle(ChatFormatting.GREEN);
     }
 
     private @Nullable Component shadersNote(final ShaderSetting value) {
@@ -296,7 +322,7 @@ public class CiderlightSettingsScreen extends OptionsSubScreen {
     }
 
     private static Component forcedNote(final String key) {
-        return Component.literal("Set by -Dciderlight." + key + " in the JVM arguments").withStyle(ChatFormatting.YELLOW);
+        return Component.translatable("ciderlight.note.forced", "ciderlight." + key).withStyle(ChatFormatting.YELLOW);
     }
 
     /** The description, under a note (how a change applies, or the override that fixes it) if there is one. */

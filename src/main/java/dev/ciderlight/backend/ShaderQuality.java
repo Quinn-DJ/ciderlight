@@ -12,8 +12,8 @@ import org.jspecify.annotations.Nullable;
  * it takes effect at the next start. -Dciderlight.quality=low|high overrides it.
  */
 public enum ShaderQuality {
-    LOW("Low"),
-    HIGH("High");
+    LOW("ciderlight.value.low"),
+    HIGH("ciderlight.value.high");
 
     private static final @Nullable ShaderQuality SAVED = load();
     /** What this session runs with, once the device exists (before that, only what the page shows). */
@@ -21,10 +21,11 @@ public enum ShaderQuality {
     /** Staged on the settings page while hot apply is on; null when nothing is pending. */
     private static volatile @Nullable ShaderQuality chosen;
 
-    public final String label;
+    /** Translation key of the label shown on the settings page. */
+    public final String labelKey;
 
-    ShaderQuality(final String label) {
-        this.label = label;
+    ShaderQuality(final String labelKey) {
+        this.labelKey = labelKey;
     }
 
     /** The choice saved when the game started, or null to let the GPU decide. */

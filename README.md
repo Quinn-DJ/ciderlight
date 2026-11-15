@@ -31,8 +31,9 @@ Written for this backend, not ported from an OptiFine/Iris pack, so they only ru
 - **Lighting**: sun-aware direct and sky light replacing vanilla's fixed face shading, warm torch falloff, full-bright flames.
 - **Held light**: torches, lanterns and other light sources in hand light the area around the player (and other players).
 - **Emissive mobs**: glowing eyes and the Warden's bioluminescent layer stay lit in the dark.
-- **Explosion flashes**: the white flash before TNT and creepers explode (and the red hurt overlay) is drawn unshaded, so
-  the sun-shadow pass no longer darkens it.
+- **Explosion flashes**: the white flash before TNT, TNT minecarts and creepers explode (and the red hurt overlay) is
+  drawn unshaded, so the sun-shadow pass no longer darkens it; the flash stays white in the dark, and an explosion
+  briefly lights the ground and walls around it.
 - **Shadows**: real-time sun and moon shadows, including foliage, with coloured light through stained glass, ice and water.
 - **Sky and atmosphere**: directional sky gradient, layered volumetric mist with light shafts and aerial perspective.
 - **Ambient occlusion**: screen-space GTAO for soft contact shadows.
@@ -55,12 +56,20 @@ Open **Options > Video Settings > Ciderlight...** (under the graphics preset):
 - **Shadows**, **Waving Plants**, **Water Reflections**, **Water Waves**, **Ambient Occlusion**: each on by default. Shadows off also
   skips the shadow maps and light shafts, which is the biggest saving.
 - **Render Scale**: the world's resolution, Auto (the quality's own) or 50 to 100%.
+- **Lighting**: sliders for **Ambient Light** (how bright caves, night and shadows are), **Sunlight**, **Shadow
+  Darkness**, **Torch Light**, **Exposure**, **Saturation** and **Explosion Light** (how much a blast lights the world),
+  in percent, 100% being the tuned look. They apply at once; 0% can be as dark (or as flat) as you like and 200-300%
+  brightens the picture.
 
-**Shadows**, **Ambient Occlusion** and the **Render Scale** apply at once. The **Shaders** switch, **Shaders Quality**
+**Shadows**, **Ambient Occlusion**, the **Render Scale** and the **Lighting** sliders apply at once. The **Shaders** switch, **Shaders Quality**
 and the three compiled effects (**Waving Plants**, **Water Reflections**, **Water Waves**) are staged on the page and
 applied by its **Apply** button, which rebuilds the shader pipelines in place: the world pauses for a moment while that
 happens and the page shows the progress. Nothing here needs a restart. All of it is saved in
 `config/ciderlight.properties`.
+
+The page and the key bind names are translated into English and Simplified Chinese: set **Options > Language** to
+简体中文（中国）. The core loads the module language files itself (with a small client-language mixin), so this works
+without Fabric API.
 
 **Keys**: under **Controls > Key Binds > Ciderlight**, **Toggle Shaders** (default **K**) switches the shaders on and
 off at the quality kept on this page, and **Ciderlight Settings** (default **O**) opens this page from the game.
@@ -70,6 +79,9 @@ JVM `-D` overrides: `ciderlight.quality=low|high`, `ciderlight.shaders=false`, `
 `ciderlight.reloadMode=auto|shader|packs` (how the pipelines are rebuilt; `auto` is the default),
 `ciderlight.shadowSize`, `ciderlight.shadowDistance`, `ciderlight.fogDistance`, `ciderlight.waterReflections=false`, `ciderlight.waterWaves=false`,
 `ciderlight.waving=false`, `ciderlight.ao=false`, `ciderlight.shadows=false`, `ciderlight.framePacing=true`, `ciderlight.debug=true`,
+`ciderlight.ambientLight=<0-300>`, `ciderlight.sunlight=<0-200>`, `ciderlight.shadowDarkness=<0-200>`,
+`ciderlight.torchLight=<0-200>`, `ciderlight.exposure=<25-200>`, `ciderlight.saturation=<0-200>`,
+`ciderlight.explosionLight=<0-200>` (percent; 100 is the tuned look),
 `ciderlight.disable=true` (fall back to vanilla backends). An override wins over the settings page, which greys that
 option out.
 

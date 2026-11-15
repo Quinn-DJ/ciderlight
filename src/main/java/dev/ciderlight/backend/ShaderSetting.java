@@ -13,8 +13,8 @@ import org.jspecify.annotations.Nullable;
  * rebuilt; otherwise it takes effect at the next start.
  */
 public enum ShaderSetting {
-    OFF("Off"),
-    ON("On");
+    OFF("ciderlight.value.off"),
+    ON("ciderlight.value.on");
 
     private static final @Nullable ShaderSetting SAVED = load();
     /** What this session runs with: what the game started with, then whatever Apply committed. */
@@ -22,10 +22,11 @@ public enum ShaderSetting {
     /** Staged on the settings page while hot apply is on; null when nothing is pending. */
     private static volatile @Nullable ShaderSetting chosen;
 
-    public final String label;
+    /** Translation key of the label shown on the settings page. */
+    public final String labelKey;
 
-    ShaderSetting(final String label) {
-        this.label = label;
+    ShaderSetting(final String labelKey) {
+        this.labelKey = labelKey;
     }
 
     /** Whether -Dciderlight.shaders enables the shaders whatever config says. */

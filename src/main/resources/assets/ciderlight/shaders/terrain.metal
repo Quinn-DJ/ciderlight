@@ -312,7 +312,7 @@ fragment float4 terrain_fragment(VertexOut in [[stage_in]],
             vis = shadow_temporal(frame, shadowHistory, in.worldPos, vis, distanceGradient * 2.0); // half-resolution history
 #endif
         }
-        direct = facing * vis;
+        direct = facing * saturate(mix(float3(1.0), vis, frame.lightShadow.x));
         sunVis = vis;
         // Metals: a sharp sun highlight that flashes across a face as the view angle changes.
         if (metal) {
@@ -342,14 +342,16 @@ fragment float4 terrain_fragment(VertexOut in [[stage_in]],
     float3 sky = skyAmbient + skyScale * sunLight;
 
     // Block light (torch_light), washed out under direct daylight.
-    float3 blockTerm = float3(1.0, 0.66, 0.30) * torch_light(blockL) * faceShade;
+    float3 blockTerm = float3(1.0, 0.66, 0.30) * torch_light(blockL) * frame.lightTuning.y * faceShade;
     // Under open daylight block light mostly disappears, as it does outdoors in real life.
     float daylight = skyL * skyL * frame.lightParams.x;
     blockTerm *= 1.0 - 0.8 * daylight * (0.6 + 0.4 * dot(direct, float3(0.333)));
 
     // A little cool ambient so caves and night shadows never go fully black (scales with the brightness option).
-    float3 ambient = floorL * float3(1.0, 1.05, 1.2) * faceShade;
+    float3 ambient = floorL * float3(1.0, 1.05, 1.2) * faceShade * frame.lightTuning.x;
     float3 light = ambient + sky + blockTerm;
+    // An explosion lights what is around it (burst_light in frame.metal).
+    light += burst_light(frame, in.worldPos, viewN);
     // A lightning bolt lights what is open to the sky around it.
     if (frame.lightning.w > 0.0 && in.light.y > 0.0) {
         float3 towardsCamera = dot(faceNormal, -in.worldPos) < 0.0 ? -faceNormal : faceNormal;

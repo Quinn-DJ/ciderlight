@@ -9,7 +9,8 @@
     "LevelExtractorMixin",
     "LevelRendererMixin",
     "EntityRendererMixin",
-    "BlockEntityRenderDispatcherMixin"
+    "BlockEntityRenderDispatcherMixin",
+    "ClientPacketListenerMixin"
   ],
   "injectors": {
     "defaultRequire": 1

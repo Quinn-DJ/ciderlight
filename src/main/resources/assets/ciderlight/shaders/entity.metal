@@ -156,10 +156,14 @@ fragment float4 entity_light_fragment(LightOut in [[stage_in]],
     if (atlas.sample(atlasSampler, in.uv0).a < 0.1) {
         discard_fragment();
     }
-    // White flash (TNT, creeper swelling) and the red hurt overlay are added by vanilla after lighting. Mark them as
-    // emissive so the composite leaves them unshaded instead of darkening the flash with the sun/sky shade.
+    // White flash (TNT, TNT minecart, creeper swelling) and the red hurt overlay are added by vanilla after lighting.
+    // Mark them as emissive so the composite leaves them unshaded instead of darkening the flash with the sun/sky
+    // shade. The white flash (normal overlay row 10, u > 0) gets its own mark: its base draw still carries the night
+    // lightmap, so the composite turns it back to white. TNT uses u == 15; a swelling creeper ramps u from 7 to 15, so
+    // any white row counts. The red hurt overlay (row 3) keeps the ordinary glow mark.
     if (in.overlay.x != 0 || in.overlay.y != 0) {
-        return float4(0.0, 0.0, 0.0, ENTITY_GLOW_ALPHA);
+        bool whiteFlash = in.overlay.x > 0 && in.overlay.y == 10;
+        return float4(0.0, 0.0, 0.0, whiteFlash ? ENTITY_FLASH_ALPHA : ENTITY_GLOW_ALPHA);
     }
     return float4(0.0, 0.0, 0.0, encode_entity_light(in.blockLight));
 }

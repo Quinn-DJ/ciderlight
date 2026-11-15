@@ -42,15 +42,16 @@ vertex VOut composite_vertex(uint vid [[vertex_id]], constant FrameData &frame [
     return o;
 }
 
-static float3 grade(float3 c) {
-    // Gentle filmic S-curve, a touch of saturation and warmth.
+static float3 grade(float3 c, constant FrameData &frame) {
+    // Gentle filmic S-curve, a touch of saturation and warmth, after the exposure slider.
+    c *= frame.lightTuning.z;
     float3 x = saturate(c); // the S-curve folds values above 1 back down
     // The contrast curve only applies to mid and bright tones; dark tones are left alone so nights stay readable
     // (Complementary lifts its tonemap off dark colours the same way).
     float l0 = dot(x, float3(0.2126, 0.7152, 0.0722));
     x = mix(x, x * x * (3.0 - 2.0 * x) * 0.2 + x * 0.8, smoothstep(0.05, 0.3, l0));
     float l = dot(x, float3(0.2126, 0.7152, 0.0722));
-    x = mix(float3(l), x, 1.0);
+    x = mix(float3(l), x, frame.lightTuning.w);
     x *= float3(1.01, 1.0, 0.98);
     return saturate(x);
 }
@@ -371,6 +372,11 @@ fragment float4 composite_fragment(VOut in [[stage_in]],
     if (emissive && entity_flame(scene.a)) {
         color *= 1.25;
     }
+    if (entity_flash(scene.a) && !isSky) {
+        // The white flash: the item/entity shader multiplied its white by the night lightmap before the composite, so
+        // restore the white here instead of showing the flash tinted blue after dark; a soft white, not full brightness.
+        color = float3(ENTITY_FLASH_BRIGHTNESS);
+    }
     if (scene.a >= 0.5 && !isSky && !emissive) {
         float blockL = decode_entity_light(scene.a);
         float3 shade = float3(1.0);
@@ -386,14 +392,14 @@ fragment float4 composite_fragment(VOut in [[stage_in]],
                 vis = shadow_temporal(frame, surfaceHistory, worldPos, vis, distanceGradient * 2.0);
             }
             // Vanilla already applies its own directional entity lighting, so only soften by facing.
-            float3 direct = vis * saturate(ndotl * 3.0);
+            float3 direct = saturate(mix(float3(1.0), vis, frame.lightShadow.x)) * saturate(ndotl * 3.0);
             directShare = dot(direct, float3(0.333)) * lightStrength;
             // The same sky and sun light as terrain (terrain.metal).
             shade = mix(float3(1.0), frame.surfaceAmbient.rgb, lightStrength) + frame.surfaceSun.rgb * direct * lightStrength;
         }
         // Where torch light dominates, the sun/moon shading and night darkening give way to a warm torch tint, so a
         // mob next to a torch is lit like the ground around it.
-        float torch = torch_light(blockL);
+        float torch = torch_light(blockL) * frame.lightTuning.y;
         // Ambient occlusion from this frame's GTAO pass: it darkens the sky/ambient share of the light only, so it
         // fades out where the mob is in direct sun or torch light.
         if (frame.fogParams.w > 0.5) {
@@ -408,6 +414,10 @@ fragment float4 composite_fragment(VOut in [[stage_in]],
             float3 facing = dot(normal, ray.origin - worldPos) < 0.0 ? -normal : normal;
             color *= 1.0 + lightning_light(frame, worldPos, facing) * lightning_shadow(frame, lightningShadow, shadowSampler, worldPos, facing)
                          + lightning_sky_light(frame);
+        }
+        // The same explosion light brightens the mobs and items around it.
+        if (frame.burstLights[0].w > 0.0) {
+            color *= 1.0 + burst_light(frame, worldPos, normal);
         }
         // Gold-coloured things drawn through the entity path (bells, gold armour) shine in direct light. There is no
         // material information here, so gold is recognised by its colour.
@@ -489,7 +499,7 @@ fragment float4 composite_fragment(VOut in [[stage_in]],
         return float4(float3(ao_lookup(ambientOcclusion, in.uv, length(worldPos), distanceGradient, ao_scale(frame)).x), 1.0);
     }
 #endif
-    color = grade(color);
+    color = grade(color, frame);
 
     // Soft vignette.
     float2 v = in.uv - 0.5;

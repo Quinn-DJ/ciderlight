@@ -96,16 +96,18 @@ fragment float4 particle_fragment(ParticleOut in [[stage_in]],
         // the sun or moon light that reaches its position.
         float3 lightDir = frame.sunDir.xyz;
         float3 vis = shadow_visibility(frame, shadowMap, shadowSampler, shadowColor, cloudShadow, in.worldPos, lightDir, 1.0);
-        direct = 0.85 * vis;
+        direct = 0.85 * saturate(mix(float3(1.0), vis, frame.lightShadow.x));
         // The same sky and sun light as terrain (terrain.metal).
         shade = mix(float3(1.0), frame.surfaceAmbient.rgb, lightStrength) + frame.surfaceSun.rgb * direct * lightStrength;
     }
     float3 sky = skyTerm * frame.lightParams.y * shade;
-    float3 blockTerm = float3(1.0, 0.66, 0.30) * torch_light(blockL);
+    float3 blockTerm = float3(1.0, 0.66, 0.30) * torch_light(blockL) * frame.lightTuning.y;
     float daylight = skyL * skyL * frame.lightParams.x;
     blockTerm *= 1.0 - 0.8 * daylight * (0.6 + 0.4 * dot(direct, float3(0.333)));
-    float3 ambient = floorL * float3(1.0, 1.05, 1.2);
+    float3 ambient = floorL * float3(1.0, 1.05, 1.2) * frame.lightTuning.x;
     float3 light = ambient + sky + blockTerm;
+    // An explosion lights what is around it (burst_light in frame.metal).
+    light += burst_light(frame, in.worldPos, normalize(-in.worldPos));
     if (frame.lightning.w > 0.0 && in.light.y > 0.0) {
         float3 towardsCamera = normalize(-in.worldPos);
         light += (lightning_light(frame, in.worldPos, towardsCamera) + lightning_sky_light(frame)) * smoothstep(0.2, 0.9, skyL);

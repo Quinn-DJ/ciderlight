@@ -177,6 +177,13 @@ public final class MetalShaders implements Destroyable {
     private static final int HELD_LIGHT_OFFSET = RAIN_MASK_OFFSET + 512;
     private static final int HELD_LIGHTS = 8; // HELD_LIGHTS in frame.metal
     private static final int SURFACE_LIGHT_OFFSET = HELD_LIGHT_OFFSET + HELD_LIGHTS * 16; // surfaceSun, surfaceAmbient
+    /** Lighting sliders (LightSetting): x ambient light, y torch light, z exposure, w saturation. */
+    private static final int LIGHT_TUNING_OFFSET = SURFACE_LIGHT_OFFSET + 32;
+    /** How much of the sunlight a shadow takes away (LightSetting.SHADOW_DARKNESS). */
+    private static final int LIGHT_SHADOW_OFFSET = LIGHT_TUNING_OFFSET + 16;
+    /** Light thrown by explosions (FrameData.burstLights): xyz relative to the camera, w intensity. */
+    private static final int BURST_LIGHT_OFFSET = LIGHT_SHADOW_OFFSET + 16;
+    private static final int BURST_LIGHTS = 8; // BURST_LIGHTS in frame.metal
     private static final int RAIN_GRID = 64;
     private static final int RAIN_CELL = 4;
     private static final int LIGHTNING_SHADOW_INDEX = 6;
@@ -2714,6 +2721,7 @@ public final class MetalShaders implements Destroyable {
         }
         if (level != this.previousLevel) {
             this.invalidateShadowMaps();
+            ExplosionLights.clear();
         }
         // Ambient occlusion only depends on the camera and the scene, not on the light.
         if (level != this.previousLevel || cameraPos.distanceToSqr(this.prevCameraPos) > 64.0 || dt >= 0.25F) {
@@ -2751,10 +2759,19 @@ public final class MetalShaders implements Destroyable {
             seg.set(ValueLayout.JAVA_FLOAT, WATER_OFFSET + 4, (float)(waterSurface - cameraPos.y));
             seg.set(ValueLayout.JAVA_FLOAT, WATER_OFFSET + 8, this.waterSky);
             seg.set(ValueLayout.JAVA_FLOAT, WATER_OFFSET + 12, waterDensity);
+            // The Lighting sliders scale the light before it is uploaded: sunlight and ambient light on surfaces
+            // here, the rest through lightTuning/lightShadow (the shaders apply those where they use them).
+            float sunlightScale = LightSetting.SUNLIGHT.scale();
+            float ambientScale = LightSetting.AMBIENT.scale();
             for (int i = 0; i < 3; i++) {
-                seg.set(ValueLayout.JAVA_FLOAT, SURFACE_LIGHT_OFFSET + i * 4, surfaceSun[i]);
-                seg.set(ValueLayout.JAVA_FLOAT, SURFACE_LIGHT_OFFSET + 16 + i * 4, surfaceAmbient[i]);
+                seg.set(ValueLayout.JAVA_FLOAT, SURFACE_LIGHT_OFFSET + i * 4, surfaceSun[i] * sunlightScale);
+                seg.set(ValueLayout.JAVA_FLOAT, SURFACE_LIGHT_OFFSET + 16 + i * 4, surfaceAmbient[i] * ambientScale);
             }
+            seg.set(ValueLayout.JAVA_FLOAT, LIGHT_TUNING_OFFSET, ambientScale);
+            seg.set(ValueLayout.JAVA_FLOAT, LIGHT_TUNING_OFFSET + 4, LightSetting.TORCH_LIGHT.scale());
+            seg.set(ValueLayout.JAVA_FLOAT, LIGHT_TUNING_OFFSET + 8, LightSetting.EXPOSURE.scale());
+            seg.set(ValueLayout.JAVA_FLOAT, LIGHT_TUNING_OFFSET + 12, LightSetting.SATURATION.scale());
+            seg.set(ValueLayout.JAVA_FLOAT, LIGHT_SHADOW_OFFSET, LightSetting.SHADOW_DARKNESS.scale());
         }
         // cameraPos.w: the cloud base above the camera; with no clouds in the map nothing is under them.
         this.sampleFrame.set(ValueLayout.JAVA_FLOAT, 348, Double.isNaN(this.cloudBase) ? -1.0e9F : (float)(this.cloudBase - cameraPos.y));
@@ -2818,6 +2835,37 @@ public final class MetalShaders implements Destroyable {
             this.sampleFrame.set(ValueLayout.JAVA_FLOAT, offset + 4, lit ? (float)(heldLightPos[i].y - cameraPos.y) : 0.0F);
             this.sampleFrame.set(ValueLayout.JAVA_FLOAT, offset + 8, lit ? (float)(heldLightPos[i].z - cameraPos.z) : 0.0F);
             this.sampleFrame.set(ValueLayout.JAVA_FLOAT, offset + 12, lit ? heldLightLevel[i] / 15.0F : 0.0F);
+        }
+        // Explosions light the world for a moment (ExplosionLights): a burst is queued at every blast centre, so TNT,
+        // creepers and the rest light the ground and walls even though their entity is already gone. A burning fuse
+        // only blinks white; it does not light the surroundings.
+        int burstLights = 0;
+        if (level != null && camera.isInitialized()) {
+            float explosionScale = LightSetting.EXPLOSION.scale();
+            List<ExplosionLights.Burst> bursts = new ArrayList<>();
+            for (ExplosionLights.Burst burst : ExplosionLights.active(now)) {
+                if (burst.pos().distanceToSqr(cameraPos) < 64.0 * 64.0 && burst.intensity(now) * explosionScale > 0.01F) {
+                    bursts.add(burst);
+                }
+            }
+            bursts.sort(java.util.Comparator.comparingDouble(burst -> burst.pos().distanceToSqr(cameraPos)));
+            for (ExplosionLights.Burst burst : bursts) {
+                if (burstLights == BURST_LIGHTS) {
+                    break;
+                }
+                int offset = BURST_LIGHT_OFFSET + burstLights * 16;
+                this.sampleFrame.set(ValueLayout.JAVA_FLOAT, offset, (float)(burst.pos().x - cameraPos.x));
+                this.sampleFrame.set(ValueLayout.JAVA_FLOAT, offset + 4, (float)(burst.pos().y - cameraPos.y));
+                this.sampleFrame.set(ValueLayout.JAVA_FLOAT, offset + 8, (float)(burst.pos().z - cameraPos.z));
+                this.sampleFrame.set(ValueLayout.JAVA_FLOAT, offset + 12, burst.intensity(now) * explosionScale);
+                burstLights++;
+            }
+        }
+        for (int i = burstLights; i < BURST_LIGHTS; i++) {
+            int offset = BURST_LIGHT_OFFSET + i * 16;
+            for (int f = 0; f < 4; f++) {
+                this.sampleFrame.set(ValueLayout.JAVA_FLOAT, offset + f * 4, 0.0F);
+            }
         }
         // Lightning: the nearest bolt lights the terrain and mobs around it (lightning_light in frame.metal).
         boolean bolt = false;

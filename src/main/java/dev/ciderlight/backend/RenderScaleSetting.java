@@ -10,12 +10,12 @@ import org.jspecify.annotations.Nullable;
  * config/ciderlight.properties as "renderScale" (auto, or the fraction); -Dciderlight.renderScale still overrides it.
  */
 public enum RenderScaleSetting {
-    AUTO(0.0F, "Auto"),
-    HALF(0.5F, "50%"),
-    TWO_THIRDS(0.67F, "67%"),
-    THREE_QUARTERS(0.75F, "75%"),
-    MOST(0.85F, "85%"),
-    FULL(1.0F, "100%");
+    AUTO(0.0F, "ciderlight.render_scale.auto"),
+    HALF(0.5F, "ciderlight.render_scale.half"),
+    TWO_THIRDS(0.67F, "ciderlight.render_scale.two_thirds"),
+    THREE_QUARTERS(0.75F, "ciderlight.render_scale.three_quarters"),
+    MOST(0.85F, "ciderlight.render_scale.most"),
+    FULL(1.0F, "ciderlight.render_scale.full");
 
     private static final RenderScaleSetting SAVED = load();
     /** The -Dciderlight.renderScale override, clamped, or null when there is none. */
@@ -26,11 +26,12 @@ public enum RenderScaleSetting {
 
     /** The fraction in each direction, or 0 for the quality's own. */
     final float scale;
-    public final String label;
+    /** Translation key of the label shown on the settings page. */
+    public final String labelKey;
 
-    RenderScaleSetting(final float scale, final String label) {
+    RenderScaleSetting(final float scale, final String labelKey) {
         this.scale = scale;
-        this.label = label;
+        this.labelKey = labelKey;
     }
 
     /** What this session runs with. */
